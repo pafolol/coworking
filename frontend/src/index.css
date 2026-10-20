@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Azul institucional como color dominante, lima como chispa de emprendimiento */
+  --color-ink: #06123a;
+  --color-navy: #081b54;
+  --color-brand: #0a3dba;
+  --color-brand-600: #0832a0;
+  --color-brand-400: #3b6cf0;
+  --color-brand-100: #dfe8ff;
+  --color-brand-50: #f0f4ff;
+  --color-sky: #6ec3ff;
+  --color-spark: #c6f23a;
+  --color-paper: #f4f6fb;
+  --color-line: #e2e7f2;
+  --color-mute: #63708f;
+
+  --shadow-card: 0 1px 2px rgb(6 18 58 / 0.04), 0 8px 24px -12px rgb(6 18 58 / 0.12);
+  --shadow-pop: 0 24px 60px -20px rgb(6 18 58 / 0.35);
+
+  --animate-rise: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-pop: pop 0.18s ease-out both;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.97) translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+html { background: var(--color-paper); }
+body { @apply font-sans text-ink antialiased; font-size: 14.5px; }
+h1, h2, h3 { @apply font-display tracking-tight; }
+::selection { background: var(--color-spark); color: var(--color-ink); }
+
+@layer components {
+  .card { @apply rounded-2xl border border-line bg-white shadow-card; }
+  .btn { @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:border-brand-400 hover:text-brand disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply border-brand bg-brand text-white hover:border-brand-600 hover:bg-brand-600 hover:text-white; }
+  .btn-spark { @apply border-spark bg-spark text-ink hover:border-ink hover:text-ink; }
+  .btn-danger { @apply border-red-200 text-red-700 hover:border-red-500 hover:text-red-700; }
+  .btn-ghost { @apply border-transparent bg-transparent hover:border-transparent hover:bg-brand-50; }
+  .input { @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none transition placeholder:text-mute/60 focus:border-brand-400 focus:ring-4 focus:ring-brand-100; }
+  .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-mute; }
+  .th { @apply px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-mute; }
+  .td { @apply px-4 py-2.5 align-middle; }
+  .row { @apply border-t border-line transition hover:bg-brand-50/60; }
+  .eyebrow { @apply font-mono text-[11px] uppercase tracking-[0.14em] text-mute; }
+  .mono { @apply font-mono text-[12.5px]; }
+}
+
+/* Retícula sutil de fondo: recuerda el plano del espacio */
+.grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.grid-bg-light {
+  background-image:
+    linear-gradient(to right, rgb(10 61 186 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(10 61 186 / 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Un hijo de rejilla puede encogerse: las tablas hacen scroll dentro de su tarjeta en vez de ensanchar la página. */
+main .grid > * { min-width: 0; }
+/* Foco de teclado visible también sobre el menú oscuro. */
+:focus-visible { outline: 2px solid var(--color-spark); outline-offset: 2px; }
+main :focus-visible { outline-color: var(--color-brand-400); }
+
+@media print {
+  .no-print { display: none !important; }
+  html, body { background: white; }
+}
+
+/* iOS hace zoom al enfocar campos de menos de 16 px: en el teléfono los formularios públicos no deben saltar. */
+@media (max-width: 640px) {
+  .input { font-size: 16px; }
+}
