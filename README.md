@@ -57,6 +57,12 @@ Automático: revisión diaria a las 8:00, corte los lunes a las 7:00 y envíos p
 Con la base vacía se cargan ~50 equipos ficticios. Para empezar en limpio: pon `SEED_DEMO=0`
 en `backend/.env`, borra `backend/coworking.db` y reinicia el backend.
 
+## Usuarios con contraseña
+
+Al arrancar se crean las cuentas `admin` y `admin2` con la contraseña de `LOGIN_PASSWORD` en `backend/.env`
+(solo si aún no existen; en la base se guarda únicamente el hash). Para cambiarla: cambia `LOGIN_PASSWORD`,
+borra las filas de la tabla `users` y reinicia el backend.
+
 ## Google: inicio de sesión y Gmail
 
 Sin configurar, el panel entra en "modo demo" y los mensajes se quedan en la bandeja.

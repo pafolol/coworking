@@ -14,14 +14,14 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import difusion, importer
+from . import cuentas, difusion, importer
 from . import services as sv
 from .db import UPLOADS, Base, SessionLocal, engine, get_db
 from .mailer import (GOOGLE_AUTH, GOOGLE_TOKEN, GOOGLE_USERINFO, SCOPES, cfg, deliver, google_configured, links, log,
                      queue_message, sender_account, set_cfg)
 from .models import (CON_ESPACIO, EN_OPERACION, ESTADOS, S_ACT, S_ALERTA, S_BAJA, S_DOC, S_ESP, S_EVA, S_FIJO, S_SOL,
                      Access, AuthSession, Automation, ChangeRequest, Checkin, Config, Cut, CutItem, Document, GoogleAccount, Log,
-                     Member, Message, Space, Task, Team, Template)
+                     Member, Message, Space, Task, Team, Template, User)
 from .seed import bootstrap, seed
 
 COOKIE = "cw_session"
@@ -45,6 +45,7 @@ async def lifespan(_: FastAPI):
             conn.exec_driver_sql("ALTER TABLE teams ADD COLUMN pausa_desde DATE")
     with SessionLocal() as db:
         bootstrap(db)
+        cuentas.ensure_users(db)
         if os.environ.get("SEED_DEMO", "1") == "1" and db.scalar(select(Team).limit(1)) is None:
             seed(db)
     scheduler = BackgroundScheduler()
@@ -194,6 +195,19 @@ def login_demo(db: Session = Depends(get_db)):
     from fastapi.responses import JSONResponse
     response = JSONResponse({"ok": True})
     start_session(db, response, "demo@coworking.local", "Operación (demo)", demo=True)
+    return response
+
+
+@app.post("/api/auth/login")
+def login_password(payload: dict = Body(...), db: Session = Depends(get_db)):
+    from fastapi.responses import JSONResponse
+    usuario = str(payload.get("usuario") or "").strip().lower()
+    user = db.get(User, usuario) if usuario else None
+    if user is None or not cuentas.check_password(str(payload.get("password") or ""), user.password_hash):
+        raise HTTPException(401, "Usuario o contraseña incorrectos.")
+    log(db, "Sistema", f"Inicio de sesión con usuario: {usuario}", actor=usuario)
+    response = JSONResponse({"ok": True})
+    start_session(db, response, usuario, user.nombre or usuario)
     return response
 
 

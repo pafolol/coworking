@@ -271,3 +271,11 @@ class Automation(Base):
     ultimo_total: Mapped[int] = mapped_column(default=0)
     creada: Mapped[datetime]
     creada_por: Mapped[str] = mapped_column(String(160), default="")
+
+
+class User(Base):
+    """Cuenta local del panel (usuario y contraseña), además de Google."""
+    __tablename__ = "users"
+    usuario: Mapped[str] = mapped_column(String(60), primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), default="")
+    password_hash: Mapped[str] = mapped_column(String(200))
