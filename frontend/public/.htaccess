@@ -1,0 +1,9 @@
+# Hostinger (LiteSpeed/Apache): las rutas del panel (/login, /f/solicitud, ...) las resuelve React.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
