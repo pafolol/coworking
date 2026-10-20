@@ -71,7 +71,6 @@ export default function Config() {
   const lista = (k: string, i: number, campo: string, v: any) => set(k, c[k].map((x: any, j: number) => (j === i ? { ...x, [campo]: v } : x)))
   const quitar = (k: string, i: number) => set(k, c[k].filter((_: any, j: number) => j !== i))
   const copiar = (t: string) => { void navigator.clipboard.writeText(t); toast('Copiado') }
-  const g = data.google
 
   return (
     <Page titulo="Configuración" eyebrow="Parámetros ajustables, no código"
@@ -97,46 +96,14 @@ export default function Config() {
           </div>
         </Card>
 
-        <Card titulo="Correo y Google">
+        <Card titulo="Correo">
           <div className="space-y-3">
             <Interruptor on={c.MODO_PRUEBA} onChange={v => set('MODO_PRUEBA', v)} label="Modo prueba"
               nota="Todos los correos van solo al equipo operativo, con el destinatario real en el asunto. Apágalo al arrancar en serio." />
-            <Campo label="Qué pasa con cada mensaje">
-              <select className="input" value={c.MODO_ENVIO} onChange={e => set('MODO_ENVIO', e.target.value)}>
-                <option value="bandeja">Se queda en la bandeja para revisarlo a mano</option>
-                <option value="borrador">Se crea solo como borrador en Gmail</option>
-                <option value="enviar">Se envía automáticamente por Gmail</option>
-              </select>
-            </Campo>
-            <div className="rounded-xl border border-line p-3">
-              <p className="text-sm font-semibold">Cuenta de Google</p>
-              {!g.configurado ? (
-                <div className="mt-1 space-y-2 text-xs leading-relaxed text-mute">
-                  <p>Falta registrar la app en Google Cloud. Pasos:</p>
-                  <ol className="list-decimal space-y-1 pl-4">
-                    <li>En <span className="mono">console.cloud.google.com</span> crea un proyecto y activa <b>Gmail API</b>.</li>
-                    <li>Pantalla de consentimiento OAuth: tipo <b>Interno</b> (Workspace) y agrega el permiso <span className="mono">gmail.compose</span>.</li>
-                    <li>Credenciales → ID de cliente OAuth → <b>Aplicación web</b>, con esta URI de redirección:</li>
-                  </ol>
-                  <button className="mono flex w-full items-center justify-between gap-2 rounded-lg bg-brand-50 px-2 py-1.5 text-left text-brand-600" onClick={() => copiar(g.redirect_uri)}>{g.redirect_uri}<Copy size={12} /></button>
-                  <p>4. Pega el ID y el secreto en <span className="mono">backend/.env</span> (<span className="mono">GOOGLE_CLIENT_ID</span>, <span className="mono">GOOGLE_CLIENT_SECRET</span>) y reinicia el backend.</p>
-                </div>
-              ) : (
-                <div className="mt-2 space-y-2">
-                  {g.cuentas.length === 0 && <p className="text-xs text-mute">Nadie ha iniciado sesión con Google todavía.</p>}
-                  {g.cuentas.map((a: any) => (
-                    <label key={a.email} className="flex cursor-pointer items-center gap-2 text-sm">
-                      <input type="radio" className="accent-brand" checked={c.CUENTA_ENVIO === a.email} disabled={!a.gmail} onChange={() => set('CUENTA_ENVIO', a.email)} />
-                      <span className="flex-1">{a.email}</span>
-                      <Chip tono={a.gmail ? 'verde' : 'gris'}>{a.gmail ? 'Gmail autorizado' : 'sin permiso de Gmail'}</Chip>
-                    </label>
-                  ))}
-                  <p className="text-xs text-mute">La cuenta elegida es desde la que salen los correos. Usa una de Workspace: permite ~1,500 destinatarios al día (una personal, ~100).</p>
-                  <a className="btn" href="/api/auth/google/login">Conectar o volver a autorizar una cuenta</a>
-                </div>
-              )}
-            </div>
-            <Campo label="Correos del equipo operativo" ayuda="Uno por línea. Son quienes pueden entrar con Google y quienes reciben los correos en modo prueba.">
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+              Por ahora no hay cuenta de correo conectada: los mensajes se quedan en la bandeja de Mensajes y no sale ningún correo.
+            </p>
+            <Campo label="Correos del equipo operativo" ayuda="Uno por línea. Son quienes reciben los correos en modo prueba.">
               <textarea className="input min-h-20 font-mono text-[13px]" value={c.CORREOS_OPERACION.join('\n')} onChange={e => set('CORREOS_OPERACION', e.target.value.split('\n').map(x => x.trim().toLowerCase()).filter(Boolean))} />
             </Campo>
           </div>

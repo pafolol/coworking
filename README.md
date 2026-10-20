@@ -19,7 +19,7 @@ cd backend;  .\.venv\Scripts\python -m uvicorn app.main:app --port 8010
 cd frontend; npm run dev
 ```
 
-Abre <http://localhost:5180>. Primera vez en otra máquina:
+Abre <http://localhost:5180> y entra con `admin` o `admin2`. Primera vez en otra máquina:
 
 ```powershell
 cd backend;  python -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt

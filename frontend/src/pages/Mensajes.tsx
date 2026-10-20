@@ -55,8 +55,8 @@ function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
         ) : (
           <>
             <span className="size-2 rounded-full bg-amber-500" />
-            <span className="flex-1">Sin cuenta de Gmail conectada: los mensajes se quedan aquí, listos para revisar. {data.google ? 'Inicia sesión con Google para crear borradores o enviarlos.' : 'Configura Google OAuth para crear borradores o enviarlos.'}</span>
-            <Link to="/config" className="btn">Configurar correo</Link>
+            <span className="flex-1">Envío de correo desactivado por ahora: los mensajes se quedan aquí, listos para revisar.</span>
+            {data.modo_prueba && <Chip tono="lima">Modo prueba</Chip>}
           </>
         )}
       </div>

@@ -169,7 +169,7 @@ def operator(request: Request, db: Session = Depends(get_db)) -> AuthSession:
 
 
 def demo_allowed() -> bool:
-    return not google_configured() or os.environ.get("ALLOW_DEMO") == "1"
+    return os.environ.get("ALLOW_DEMO") == "1"
 
 
 def start_session(db: Session, response, email: str, nombre: str, foto: str = "", demo: bool = False) -> None:
