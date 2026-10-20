@@ -2,7 +2,7 @@ import { CalendarClock, Download, FilePenLine, Pause, Play, Plus, Send, Trash2 }
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { api, fecha, fechaHora, useApi } from '../api'
+import { api, API_URL, fecha, fechaHora, useApi } from '../api'
 import { Campo, Card, Chip, Estado, Estatus, Filtros, Page, useAccion, Vacio } from '../ui'
 
 function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
@@ -264,7 +264,7 @@ function useDestinatarios(filtro: Filtro) {
   return res
 }
 
-const urlExportar = (f: Filtro) => `/api/personas/exportar?filtro=${encodeURIComponent(JSON.stringify(f))}`
+const urlExportar = (f: Filtro) => `${API_URL}/personas/exportar?filtro=${encodeURIComponent(JSON.stringify(f))}`
 const FRECUENCIAS: Record<string, string> = { una_vez: 'Una sola vez', diaria: 'Cada día', semanal: 'Cada semana', mensual: 'Cada mes' }
 const hoyIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 

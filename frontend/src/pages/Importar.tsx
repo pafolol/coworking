@@ -2,7 +2,7 @@ import { CheckCircle2, Download, FileSpreadsheet, RotateCcw, Sparkles, TriangleA
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { api, fecha, useApi } from '../api'
+import { api, API_URL, fecha, useApi } from '../api'
 import { Card, Chip, Estado, Page, useToast } from '../ui'
 
 const CAMPOS: [string, string][] = [
@@ -105,7 +105,7 @@ export default function Importar() {
 
   return (
     <Page titulo="Importar datos" eyebrow="Sube tu Excel como lo tengas; las columnas se acomodan solas"
-      acciones={<a className="btn" href="/api/importar/plantilla"><Download size={14} /> Plantilla (opcional)</a>}>
+      acciones={<a className="btn" href={`${API_URL}/importar/plantilla`}><Download size={14} /> Plantilla (opcional)</a>}>
       {hecho && (
         <div className="mb-5 flex flex-wrap items-center gap-4 rounded-2xl bg-ink px-5 py-4 text-white">
           <CheckCircle2 size={28} className="text-spark" />

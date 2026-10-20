@@ -2,7 +2,7 @@ import { Check, ExternalLink, Eye, Upload, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { api, fecha, fechaHora, useApi } from '../api'
+import { api, API_URL, fecha, fechaHora, useApi } from '../api'
 import { Campo, Chip, Estado, Estatus, Modal, useAccion, Vacio } from '../ui'
 
 const enMeses = (n: number) => {
@@ -73,7 +73,7 @@ export function DocVisor({ doc, onClose, reload }: { doc: any; onClose: () => vo
     setBusy(false)
     if (ok) onClose()
   }
-  const url = `/api/archivos/${doc.id}`
+  const url = `${API_URL}/archivos/${doc.id}`
   const { data: info } = useApi(doc.firma ? '/public/info' : null)
   return (
     <Modal titulo={doc.nombre} onClose={onClose} ancho="max-w-6xl">

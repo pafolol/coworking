@@ -16,6 +16,9 @@ function mensajeError(data: any, status: number): string {
   return 'Algo salió mal. Intenta de nuevo.'
 }
 
+/** Base del backend: en desarrollo, el proxy de Vite (/api); en producción, VITE_API_URL (.env.production). */
+export const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '')
+
 export async function api(path: string, options: { method?: string; body?: unknown; form?: FormData } = {}): Promise<any> {
   const init: RequestInit = { method: options.method ?? (options.body !== undefined || options.form ? 'POST' : 'GET'), credentials: 'include' }
   if (options.form) {
@@ -26,7 +29,7 @@ export async function api(path: string, options: { method?: string; body?: unkno
   }
   let res: Response
   try {
-    res = await fetch(`/api${path}`, init)
+    res = await fetch(`${API_URL}${path}`, init)
   } catch {
     throw new Error('No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.')
   }

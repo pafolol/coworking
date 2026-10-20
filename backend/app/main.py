@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -58,6 +59,25 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Coworking GDL", lifespan=lifespan)
+
+# El frontend puede vivir en otro dominio que el API (api.canilarpit.com): CORS con credenciales solo para esos orígenes.
+ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", FRONTEND).split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def check_origin(request: Request, call_next):
+    """Con la cookie en SameSite=None, un formulario de otro sitio podría usar la sesión: se rechaza su origen."""
+    origin = request.headers.get("origin", "").rstrip("/")
+    if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in ORIGINS and origin != str(request.base_url).rstrip("/"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Origen no permitido."}, status_code=403)
+    return await call_next(request)
+
+
+def cookie_opts(request: Request) -> dict:
+    """Por HTTPS la cookie va con SameSite=None; Secure para que el navegador la mande desde el dominio del frontend."""
+    return {"samesite": "none", "secure": True} if request.url.scheme == "https" else {"samesite": "lax"}
 
 
 # ---------- serialización ----------
@@ -172,11 +192,11 @@ def demo_allowed() -> bool:
     return os.environ.get("ALLOW_DEMO") == "1"
 
 
-def start_session(db: Session, response, email: str, nombre: str, foto: str = "", demo: bool = False) -> None:
+def start_session(request: Request, db: Session, response, email: str, nombre: str, foto: str = "", demo: bool = False) -> None:
     token = secrets.token_urlsafe(32)
     db.add(AuthSession(token=token, email=email, nombre=nombre, foto=foto, demo=demo, creada=datetime.now()))
     db.commit()
-    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 24 * SESSION_DAYS)
+    response.set_cookie(COOKIE, token, httponly=True, max_age=60 * 60 * 24 * SESSION_DAYS, **cookie_opts(request))
 
 
 @app.get("/api/auth/me")
@@ -189,17 +209,17 @@ def me(request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/api/auth/demo")
-def login_demo(db: Session = Depends(get_db)):
+def login_demo(request: Request, db: Session = Depends(get_db)):
     if not demo_allowed():
         raise HTTPException(403, "El modo demo está desactivado: entra con Google.")
     from fastapi.responses import JSONResponse
     response = JSONResponse({"ok": True})
-    start_session(db, response, "demo@coworking.local", "Operación (demo)", demo=True)
+    start_session(request, db, response, "demo@coworking.local", "Operación (demo)", demo=True)
     return response
 
 
 @app.post("/api/auth/login")
-def login_password(payload: dict = Body(...), db: Session = Depends(get_db)):
+def login_password(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
     from fastapi.responses import JSONResponse
     usuario = str(payload.get("usuario") or "").strip().lower()
     user = db.get(User, usuario) if usuario else None
@@ -207,7 +227,7 @@ def login_password(payload: dict = Body(...), db: Session = Depends(get_db)):
         raise HTTPException(401, "Usuario o contraseña incorrectos.")
     log(db, "Sistema", f"Inicio de sesión con usuario: {usuario}", actor=usuario)
     response = JSONResponse({"ok": True})
-    start_session(db, response, usuario, user.nombre or usuario)
+    start_session(request, db, response, usuario, user.nombre or usuario)
     return response
 
 
@@ -219,7 +239,7 @@ def logout(request: Request, db: Session = Depends(get_db)):
         db.delete(session)
         db.commit()
     response = JSONResponse({"ok": True})
-    response.delete_cookie(COOKIE)
+    response.delete_cookie(COOKIE, httponly=True, **cookie_opts(request))
     return response
 
 
@@ -274,7 +294,7 @@ def google_callback(request: Request, code: str = "", state: str = "", error: st
     log(db, "Sistema", f"Inicio de sesión con Google: {email}", actor=email)
     response = RedirectResponse(f"{FRONTEND}/")
     response.delete_cookie("cw_oauth")
-    start_session(db, response, email, acc.nombre, acc.foto)
+    start_session(request, db, response, email, acc.nombre, acc.foto)
     return response
 
 
