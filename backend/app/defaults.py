@@ -36,13 +36,23 @@ FORMULARIOS = {
         "pregunta_descripcion": "¿Qué problema resuelven, para quién y qué avance llevan?",
         "etapas": ["Idea", "Prototipo", "MVP", "Primeras ventas", "Crecimiento"],
         "pedir_sector": True,
-        "preguntas": [],  # {id, etiqueta, tipo: texto | parrafo | opcion | casilla, opciones: [], obligatoria}
+        "preguntas": [],  # campos de formas.py: {id, etiqueta, tipo, ayuda, opciones, obligatoria, texto}
         "mensaje_final": "Te enviamos la confirmación por correo. Revisaremos tu proyecto y te escribiremos con el resultado.",
+        "color": "",
+        "titulo_proyecto": "El proyecto",
+        "etiqueta_nombre": "Nombre del equipo o proyecto",
+        "etiqueta_etapa": "Etapa",
+        "etiqueta_sector": "Sector",
+        "titulo_integrantes": "Integrantes",
+        "texto_integrantes": "",  # vacío: se explica la regla del correo institucional
+        "titulo_carta": "Carta compromiso",
+        "boton": "Enviar solicitud",
     },
     "checkin": {
         "titulo": "Check-in",
         "intro": "Escribe el correo con el que estás registrado en tu equipo.",
         "boton": "Registrar mi visita",
+        "color": "",
     },
     "cambios": {
         "titulo": "Cambios en tu equipo",
@@ -50,6 +60,10 @@ FORMULARIOS = {
         "permitir_altas": True,
         "permitir_bajas": True,
         "permitir_pausa": True,
+        "color": "",
+        "titulo_documentos": "Identificaciones y otros documentos",
+        "titulo_integrantes": "Integrantes",
+        "titulo_pausa": "Pausa justificada",
     },
 }
 

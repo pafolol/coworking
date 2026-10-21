@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, enDias, fecha, fechaHora, useApi } from '../api'
 import { Campo, Card, Chip, Estado, Estatus, Modal, Page, Tabla, useAccion, Vacio } from '../ui'
 import { AccesoModal, DocAcciones, PersonaLink } from './shared'
+import { ValorRespuesta } from './campos'
 
 const DIAS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -57,7 +58,7 @@ export function Evaluar({ t, onClose, reload }: { t: any; onClose: () => void; r
       <div className="mb-4 rounded-xl bg-slate-50 p-3 text-sm">
         <p className="eyebrow">{t.folio} · {t.sector || 'sin sector'} · {t.etapa || 'sin etapa'} · {t.integrantes} integrante(s)</p>
         <p className="mt-1 max-h-28 overflow-y-auto text-ink/80">{t.descripcion || 'Sin descripción.'}</p>
-        {(t.respuestas ?? []).map((r: any) => <p key={r.etiqueta} className="mt-1.5 text-[13px]"><b>{r.etiqueta}:</b> <span className="text-ink/80">{r.valor}</span></p>)}
+        {(t.respuestas ?? []).map((r: any) => <p key={r.etiqueta} className="mt-1.5 text-[13px]"><b>{r.etiqueta}:</b> <span className="text-ink/80"><ValorRespuesta r={r} href={`/equipos/${t.id}/respuesta/${r.id}`} /></span></p>)}
       </div>
       {t.faltantes.length > 0 && <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Aún falta: {t.faltantes.join('; ')}.</p>}
       <div className="space-y-3">
@@ -206,7 +207,7 @@ function EquipoVista({ id }: { id?: string }) {
             <dl className="space-y-3 text-sm">
               <div><dt className="eyebrow">Líder</dt><dd className="font-semibold">{t.lider_nombre}</dd><dd className="text-mute">{t.lider_correo}</dd></div>
               <div><dt className="eyebrow">Proyecto</dt><dd className="text-mute">{t.descripcion || '—'}</dd></div>
-              {(t.respuestas ?? []).map((r: any) => <div key={r.etiqueta}><dt className="eyebrow">{r.etiqueta}</dt><dd className="whitespace-pre-line text-mute">{r.valor}</dd></div>)}
+              {(t.respuestas ?? []).map((r: any) => <div key={r.etiqueta}><dt className="eyebrow">{r.etiqueta}</dt><dd className="text-mute"><ValorRespuesta r={r} href={`/equipos/${t.id}/respuesta/${r.id}`} /></dd></div>)}
               <div className="grid grid-cols-2 gap-3">
                 <div><dt className="eyebrow">Solicitud</dt><dd>{fecha(t.fecha_solicitud)}</dd></div>
                 <div><dt className="eyebrow">Aceptación</dt><dd>{fecha(t.fecha_aceptacion)}</dd></div>

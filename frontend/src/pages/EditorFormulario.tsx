@@ -1,12 +1,11 @@
-import { ArrowDown, ArrowUp, ExternalLink, Plus, Trash2 } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { api } from '../api'
 import { Campo, Modal, useAccion, useToast } from '../ui'
+import { EditorCampos, revisarCampos, SelectorColor } from './campos'
 
-const TIPOS = [['texto', 'Texto corto'], ['parrafo', 'Texto largo'], ['opcion', 'Lista de opciones'], ['casilla', 'Casilla (sí / no)']]
-
-function Interruptor({ on, onChange, label, nota }: { on: boolean; onChange: (v: boolean) => void; label: string; nota?: string }) {
+export function Interruptor({ on, onChange, label, nota }: { on: boolean; onChange: (v: boolean) => void; label: string; nota?: string }) {
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-line p-3 text-left transition hover:border-brand-400">
       <span className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition ${on ? 'bg-brand' : 'bg-slate-300'}`}><i className={`size-4 rounded-full bg-white transition ${on ? 'translate-x-4' : ''}`} /></span>
@@ -15,7 +14,15 @@ function Interruptor({ on, onChange, label, nota }: { on: boolean; onChange: (v:
   )
 }
 
-/** Editor de un formulario público: textos, opciones y (en la solicitud) preguntas extra. */
+/** Un texto del formulario que se puede cambiar. */
+const Texto = ({ f, k, label, set, ayuda, largo }: { f: any; k: string; label: string; set: (k: string, v: any) => void; ayuda?: string; largo?: boolean }) => (
+  <Campo label={label} ayuda={ayuda}>
+    {largo ? <textarea className="input min-h-20" value={f[k] ?? ''} onChange={e => set(k, e.target.value)} />
+      : <input className="input" value={f[k] ?? ''} onChange={e => set(k, e.target.value)} />}
+  </Campo>
+)
+
+/** Editor de un formulario público: textos, color, opciones y (en la solicitud) preguntas extra de cualquier tipo. */
 export default function EditorFormulario({ clave, nombre, url, todos, onClose, reload }: { clave: 'solicitud' | 'checkin' | 'cambios'; nombre: string; url: string; todos: any; onClose: () => void; reload: () => unknown }) {
   const [f, setF] = useState<any>(structuredClone(todos[clave]))
   const run = useAccion(reload)
@@ -25,26 +32,17 @@ export default function EditorFormulario({ clave, nombre, url, todos, onClose, r
   const sucio = JSON.stringify(f) !== inicial.current
   // Esc o un clic fuera cierran el modal: no se pierde una edición larga sin avisar.
   const cerrar = () => { if (!sucio || confirm('Hay cambios sin guardar. ¿Cerrar y descartarlos?')) onClose() }
-  const set = (k: string, v: any) => setF({ ...f, [k]: v })
-  const preguntas: any[] = f.preguntas ?? []
-  const pregunta = (i: number, cambios: object) => set('preguntas', preguntas.map((q, j) => (j === i ? { ...q, ...cambios } : q)))
-  const mover = (i: number, d: number) => {
-    const copia = [...preguntas]
-    ;[copia[i], copia[i + d]] = [copia[i + d], copia[i]]
-    set('preguntas', copia)
-  }
+  const set = (k: string, v: any) => setF((prev: any) => ({ ...prev, [k]: v }))
   const guardar = async () => {
     if (guardando) return
     if (!String(f.titulo ?? '').trim()) return toast('El título no puede quedar vacío.', true)
-    if (clave === 'solicitud') {
-      const sinOpciones = preguntas.find(q => q.etiqueta.trim() && q.tipo === 'opcion' && !(q.opciones ?? []).some((o: string) => o.trim()))
-      if (sinOpciones) return toast(`La pregunta «${sinOpciones.etiqueta.trim()}» es una lista de opciones pero no tiene opciones.`, true)
-      if (!(f.etapas ?? []).some((e: string) => e.trim())) return toast('Deja al menos una etapa del proyecto.', true)
-    }
     const limpio = { ...f }
     if (clave === 'solicitud') {
+      const { error, limpios } = revisarCampos(f.preguntas ?? [])
+      if (error) return toast(error, true)
+      limpio.preguntas = limpios
       limpio.etapas = (f.etapas ?? []).map((e: string) => e.trim()).filter(Boolean)
-      limpio.preguntas = preguntas.filter(q => q.etiqueta.trim()).map(q => ({ ...q, etiqueta: q.etiqueta.trim(), opciones: (q.opciones ?? []).map((o: string) => o.trim()).filter(Boolean) }))
+      if (!limpio.etapas.length) return toast('Deja al menos una etapa del proyecto.', true)
     }
     setGuardando(true)
     const ok = await run(() => api('/config', { method: 'PUT', body: { FORMULARIOS: { ...todos, [clave]: limpio } } }), `Formulario de ${nombre.toLowerCase()} guardado`)
@@ -53,58 +51,65 @@ export default function EditorFormulario({ clave, nombre, url, todos, onClose, r
   }
 
   return (
-    <Modal titulo={`Editar formulario · ${nombre}`} onClose={cerrar} ancho="max-w-3xl">
+    <Modal titulo={`Editar formulario · ${nombre}`} onClose={cerrar} ancho="max-w-4xl">
       <div className="space-y-4">
-        <Campo label="Título"><input className="input font-display text-lg font-bold" value={f.titulo} onChange={e => set('titulo', e.target.value)} /></Campo>
-        <Campo label="Texto de introducción" ayuda={clave === 'solicitud' ? 'Puedes usar {{dias_minimos}} y {{semanas_upgrade}}: se reemplazan por los valores de Configuración.' : undefined}>
-          <textarea className="input min-h-20" value={f.intro} onChange={e => set('intro', e.target.value)} />
-        </Campo>
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <Campo label="Título"><input className="input font-display text-lg font-bold" value={f.titulo} onChange={e => set('titulo', e.target.value)} /></Campo>
+          <div><p className="label">Color</p><SelectorColor valor={f.color ?? ''} onChange={c => set('color', c)} /></div>
+        </div>
+        <Texto f={f} k="intro" label="Texto de introducción" set={set} largo ayuda={clave === 'solicitud' ? 'Puedes usar {{dias_minimos}} y {{semanas_upgrade}}: se reemplazan por los valores de Configuración.' : undefined} />
 
-        {clave === 'checkin' && <Campo label="Texto del botón"><input className="input" value={f.boton} onChange={e => set('boton', e.target.value)} /></Campo>}
+        {clave === 'checkin' && <Texto f={f} k="boton" label="Texto del botón" set={set} />}
 
         {clave === 'cambios' && (
-          <div className="space-y-2">
-            <p className="label">Trámites que el líder puede hacer solo</p>
-            <Interruptor on={f.permitir_altas} onChange={v => set('permitir_altas', v)} label="Agregar integrantes" nota="Crea la tarea de alta de acceso." />
-            <Interruptor on={f.permitir_bajas} onChange={v => set('permitir_bajas', v)} label="Dar de baja integrantes" nota="Crea la tarea de revocar el acceso." />
-            <Interruptor on={f.permitir_pausa} onChange={v => set('permitir_pausa', v)} label="Pedir pausa justificada" nota="Llega como tarea para que Administración la apruebe." />
-            <p className="text-xs text-mute">Subir identificaciones, aceptar la carta y confirmar la renovación siempre están disponibles.</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <p className="label">Trámites que el líder puede hacer solo</p>
+              <Interruptor on={f.permitir_altas} onChange={v => set('permitir_altas', v)} label="Agregar integrantes" nota="Crea la tarea de alta de acceso." />
+              <Interruptor on={f.permitir_bajas} onChange={v => set('permitir_bajas', v)} label="Dar de baja integrantes" nota="Crea la tarea de revocar el acceso." />
+              <Interruptor on={f.permitir_pausa} onChange={v => set('permitir_pausa', v)} label="Pedir pausa justificada" nota="Llega como tarea para que Administración la apruebe." />
+              <p className="text-xs text-mute">Subir identificaciones, aceptar la carta y confirmar la renovación siempre están disponibles.</p>
+            </div>
+            <div className="space-y-3">
+              <p className="label">Títulos de las secciones</p>
+              <Texto f={f} k="titulo_documentos" label="Documentos" set={set} />
+              <Texto f={f} k="titulo_integrantes" label="Integrantes" set={set} />
+              <Texto f={f} k="titulo_pausa" label="Pausa" set={set} />
+            </div>
           </div>
         )}
 
         {clave === 'solicitud' && (
           <>
-            <Campo label="Pregunta principal del proyecto"><input className="input" value={f.pregunta_descripcion} onChange={e => set('pregunta_descripcion', e.target.value)} /></Campo>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Campo label="Etapas (una por línea)"><textarea className="input min-h-32" value={(f.etapas ?? []).join('\n')} onChange={e => set('etapas', e.target.value.split('\n'))} /></Campo>
-              <div className="space-y-3">
-                <div><p className="label">Campos opcionales</p><Interruptor on={f.pedir_sector} onChange={v => set('pedir_sector', v)} label="Preguntar el sector" /></div>
-                <Campo label="Mensaje al terminar"><textarea className="input min-h-20" value={f.mensaje_final} onChange={e => set('mensaje_final', e.target.value)} /></Campo>
+            <div className="rounded-xl border border-line p-4">
+              <p className="label">1 · Sección del proyecto</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Texto f={f} k="titulo_proyecto" label="Título de la sección" set={set} />
+                <Texto f={f} k="etiqueta_nombre" label="Pregunta del nombre" set={set} />
+                <div className="sm:col-span-2"><Texto f={f} k="pregunta_descripcion" label="Pregunta principal del proyecto" set={set} /></div>
+                <Texto f={f} k="etiqueta_etapa" label="Pregunta de la etapa" set={set} />
+                <Campo label="Etapas (una por línea)"><textarea className="input min-h-28" value={(f.etapas ?? []).join('\n')} onChange={e => set('etapas', e.target.value.split('\n'))} /></Campo>
+                <Interruptor on={f.pedir_sector} onChange={v => set('pedir_sector', v)} label="Preguntar el sector" />
+                {f.pedir_sector && <Texto f={f} k="etiqueta_sector" label="Pregunta del sector" set={set} />}
+              </div>
+              <div className="mt-4">
+                <p className="label">Preguntas extra</p>
+                <EditorCampos campos={f.preguntas ?? []} onChange={c => set('preguntas', c)}
+                  vacio="Sin preguntas extra. Lo que agregues (también archivos o firmas) aparece en «El proyecto» y se ve en la ficha del equipo y al evaluar." />
               </div>
             </div>
-
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <p className="label !mb-0">Preguntas extra</p>
-                <button type="button" className="btn" onClick={() => set('preguntas', [...preguntas, { id: `p${Date.now()}`, etiqueta: '', tipo: 'texto', opciones: [], obligatoria: false }])}><Plus size={14} /> Agregar pregunta</button>
+            <div className="rounded-xl border border-line p-4">
+              <p className="label">2 · Integrantes y 3 · Carta</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Texto f={f} k="titulo_integrantes" label="Título de integrantes" set={set} />
+                <Texto f={f} k="titulo_carta" label="Título de la carta" set={set} />
+                <div className="sm:col-span-2"><Texto f={f} k="texto_integrantes" label="Instrucciones de integrantes" set={set} largo ayuda="Vacío = se explica que alumnos y colaboradores usan su correo institucional y los externos suben identificación." /></div>
               </div>
-              {preguntas.length === 0 && <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-mute">Sin preguntas extra. Lo que agregues aparece en «El proyecto» y sus respuestas se ven en la ficha del equipo y al evaluar.</p>}
-              <div className="space-y-2">
-                {preguntas.map((q, i) => (
-                  <div key={q.id} className="rounded-xl border border-line p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input className="input min-w-52 flex-1" placeholder="Texto de la pregunta" aria-label="Texto de la pregunta" value={q.etiqueta} onChange={e => pregunta(i, { etiqueta: e.target.value })} />
-                      <select className="input !w-44" aria-label="Tipo de pregunta" value={q.tipo} onChange={e => pregunta(i, { tipo: e.target.value })}>{TIPOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-                      <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" className="size-4 accent-brand" checked={q.obligatoria} onChange={e => pregunta(i, { obligatoria: e.target.checked })} /> Obligatoria</label>
-                      <button type="button" className="btn btn-ghost !px-1.5 text-mute" disabled={i === 0} onClick={() => mover(i, -1)} title="Subir" aria-label="Subir pregunta"><ArrowUp size={14} /></button>
-                      <button type="button" className="btn btn-ghost !px-1.5 text-mute" disabled={i === preguntas.length - 1} onClick={() => mover(i, 1)} title="Bajar" aria-label="Bajar pregunta"><ArrowDown size={14} /></button>
-                      <button type="button" className="btn btn-ghost !px-1.5 text-mute" onClick={() => set('preguntas', preguntas.filter((_, j) => j !== i))} title="Quitar" aria-label="Quitar pregunta"><Trash2 size={14} /></button>
-                    </div>
-                    {q.tipo === 'opcion' && <textarea className="input mt-2 min-h-20 text-[13px]" placeholder="Opciones, una por línea" aria-label="Opciones, una por línea" value={(q.opciones ?? []).join('\n')} onChange={e => pregunta(i, { opciones: e.target.value.split('\n') })} />}
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-mute">Los integrantes, la casilla de externo con su identificación y la carta compromiso son fijos; el texto de la carta se edita en Configuración.</p>
+              <p className="mt-2 text-xs text-mute">Los datos de cada integrante, la identificación de externos y la carta compromiso son fijos porque de ellos depende el registro; el texto de la carta se edita en Configuración.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Texto f={f} k="boton" label="Texto del botón de enviar" set={set} />
+              <Texto f={f} k="mensaje_final" label="Mensaje al terminar" set={set} largo />
             </div>
           </>
         )}

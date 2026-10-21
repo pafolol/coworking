@@ -84,12 +84,13 @@ def base_vars(db: Session, team: Team | None, member: Member | None) -> dict:
 
 
 def queue_message(db: Session, clave: str, team: Team | None = None, member: Member | None = None,
-                  extra: dict | None = None, para: str | None = None, prueba: bool = False) -> Message:
+                  extra: dict | None = None, para: str | None = None, prueba: bool = False, texto: dict | None = None) -> Message:
     """Crea el mensaje en la bandeja y lo entrega según MODO_ENVIO.
 
     Al líder con copia a los integrantes activos; los avisos personales van a la persona con copia al líder.
     """
-    tpl = db.get(Template, clave)
+    # texto: {nombre, asunto, cuerpo} para un correo que no sale de una plantilla guardada (p. ej. un formulario propio).
+    tpl = Template(clave=clave, numero=0, **texto) if texto else db.get(Template, clave)
     variables = base_vars(db, team, member)
     variables.update(extra or {})
     asunto = render(tpl.asunto, variables)

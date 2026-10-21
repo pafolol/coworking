@@ -35,13 +35,13 @@ cd frontend; npm install
 | Corte semanal | Propuesta de cada lunes: se aprueba (o se desmarca lo que no aplique) y salen los mensajes |
 | Mensajes | Bandeja de salida (revisar, crear borrador en Gmail, enviar); las 14 plantillas del sistema más las que crees; envíos a grupos (internos/externos, líderes/integrantes, por estado, por equipo o por persona) con exportación a Excel (nombre y correo); y envíos programados (una vez, diario, semanal o mensual) |
 | Solicitudes / Equipos / Espacios / Check-ins | Evaluación con rúbrica, ficha de cada equipo, plano de lugares, QR |
-| Formularios | Los tres enlaces públicos (solicitud, check-in, cambios) con su QR y lo que ha llegado |
+| Formularios | Los tres enlaces públicos (solicitud, check-in, cambios) con su QR, totalmente editables (textos, color, botón, secciones y preguntas extra de cualquier tipo, incluso archivos y firmas), y los **formularios propios**: se arman en el editor (texto, número, fecha, opciones, casillas, archivos, firma, secciones), se mandan por correo con un enlace personal a personas o equipos (o a correos sueltos) y sus respuestas se ven en el panel o se exportan a Excel |
 | Accesos / Documentos | Espejo de la plataforma de accesos del campus; documentos que se suben, se revisan en pantalla y se consultan por persona |
 | Importar datos | Sube cualquier Excel o CSV (p. ej. la exportación del formulario de solicitudes): las columnas se reconocen solas (a OpenAI solo se le mandan los títulos de las columnas, nunca los datos), se pueden ajustar a mano y hay vista previa. Cada equipo nuevo entra como **solicitud por evaluar**, salvo que el archivo diga que ya fue aceptado (columna de decisión o un estado en operación); las demás preguntas del formulario se guardan en la solicitud. Lo ya registrado o repetido se ignora, así que se puede volver a subir el mismo archivo. Tipos de persona: Alumno, Colaborador, Exatec (cualquier correo) y Externo |
 | Cómo funciona | El manual en una página: ciclo de vida, reglas, roles y calendario |
 | Configuración | Umbrales, semanas excluidas, catálogo de documentos, rúbrica, correo |
 
-Formularios públicos (sin sesión): `/f/solicitud`, `/f/checkin?k=…` (el QR) y `/f/cambios`.
+Formularios públicos (sin sesión): `/f/solicitud`, `/f/checkin?k=…` (el QR), `/f/cambios` y los formularios propios en `/formulario/<id>?t=<enlace personal>`.
 
 Automático: revisión diaria a las 8:00, corte los lunes a las 7:00 y envíos programados (se revisan cada hora) (mientras el backend esté corriendo).
 

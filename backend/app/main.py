@@ -2,6 +2,7 @@
 import json
 import os
 import secrets
+import re
 from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -15,13 +16,13 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import cuentas, difusion, importer
+from . import cuentas, difusion, formas, importer
 from . import services as sv
 from .db import UPLOADS, Base, SessionLocal, engine, get_db
 from .mailer import (GOOGLE_AUTH, GOOGLE_TOKEN, GOOGLE_USERINFO, SCOPES, cfg, deliver, google_configured, links, log,
                      queue_message, sender_account, set_cfg)
 from .models import (CON_ESPACIO, EN_OPERACION, ESTADOS, S_ACT, S_ALERTA, S_BAJA, S_DOC, S_ESP, S_EVA, S_FIJO, S_SOL,
-                     Access, AuthSession, Automation, ChangeRequest, Checkin, Config, Cut, CutItem, Document, GoogleAccount, Log,
+                     Access, AuthSession, Automation, ChangeRequest, Checkin, Config, CustomForm, Cut, CutItem, Document, FormResponse, GoogleAccount, Log,
                      Member, Message, Space, Task, Team, Template, User)
 from .seed import bootstrap, seed
 
@@ -1157,6 +1158,168 @@ def automatizacion_delete(auto_id: int, db: Session = Depends(get_db), op: AuthS
     return {"ok": True}
 
 
+# ---------- formularios propios (editor) ----------
+
+def get_form(db: Session, form_id: int) -> CustomForm:
+    f = db.get(CustomForm, form_id)
+    if f is None:
+        raise HTTPException(404, "Formulario no encontrado.")
+    return f
+
+
+def serve_upload(ruta: str) -> FileResponse:
+    """Un archivo de uploads/: PDF o imagen en línea; cualquier otra cosa, como descarga."""
+    path = (UPLOADS / ruta).resolve() if ruta else None
+    if path is None or UPLOADS.resolve() not in path.parents or not path.exists():
+        raise HTTPException(404, "Archivo no encontrado.")
+    media = sv.MEDIA.get(path.suffix.lower())
+    nombre = path.name.split("_", 1)[-1]
+    if media is None:
+        return FileResponse(path, filename=nombre, media_type="application/octet-stream", headers={"X-Content-Type-Options": "nosniff"})
+    return FileResponse(path, filename=nombre, media_type=media, content_disposition_type="inline", headers={"X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/api/formas")
+def formas_lista(db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
+    forms = db.scalars(select(CustomForm).order_by(CustomForm.activo.desc(), CustomForm.creado.desc()))
+    return {"formularios": [formas.form_row(db, f) for f in forms], "tipos": formas.TIPOS,
+            "asunto": formas.ASUNTO, "mensaje": formas.MENSAJE}
+
+
+@app.post("/api/formas")
+def formas_crear(payload: dict = Body(...), db: Session = Depends(get_db), op: AuthSession = Depends(operator)):
+    f = CustomForm(slug=secrets.token_urlsafe(9), titulo="", creado=datetime.now(), creado_por=op.email,
+                   boton="Enviar", mensaje_final="¡Gracias! Recibimos tus respuestas.")
+    origen = db.get(CustomForm, int(payload["duplicar"])) if str(payload.get("duplicar") or "").isdigit() else None
+    if origen is not None:  # copia de otro formulario, sin sus respuestas
+        payload = {**formas.form_row(db, origen), "titulo": f"{origen.titulo} (copia)"}
+    try:
+        formas.apply_fields(f, {"campos": [], **payload})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    db.add(f)
+    log(db, "Sistema", f"Formulario «{f.titulo}» creado", actor=op.email)
+    db.commit()
+    return formas.form_row(db, f)
+
+
+@app.get("/api/formas/{form_id}")
+def formas_detalle(form_id: int, db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
+    f = get_form(db, form_id)
+    respuestas = db.scalars(select(FormResponse).where(FormResponse.form_id == f.id)
+                            .order_by(FormResponse.respondido.is_(None), FormResponse.respondido.desc(), FormResponse.creado.desc()))
+    return {**formas.form_row(db, f), "respuestas": [formas.response_row(r) for r in respuestas]}
+
+
+@app.put("/api/formas/{form_id}")
+def formas_editar(form_id: int, payload: dict = Body(...), db: Session = Depends(get_db), op: AuthSession = Depends(operator)):
+    f = get_form(db, form_id)
+    try:
+        formas.apply_fields(f, payload)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    log(db, "Sistema", f"Formulario «{f.titulo}» editado", actor=op.email)
+    db.commit()
+    return formas.form_row(db, f)
+
+
+@app.delete("/api/formas/{form_id}")
+def formas_borrar(form_id: int, db: Session = Depends(get_db), op: AuthSession = Depends(operator)):
+    f = get_form(db, form_id)
+    for r in db.scalars(select(FormResponse).where(FormResponse.form_id == f.id)):
+        db.delete(r)
+    db.delete(f)
+    log(db, "Sistema", f"Formulario «{f.titulo}» borrado con sus respuestas", actor=op.email)
+    db.commit()
+    formas.remove_files(form_id)
+    return {"ok": True}
+
+
+@app.post("/api/formas/{form_id}/enviar")
+def formas_enviar(form_id: int, payload: dict = Body(...), db: Session = Depends(get_db), op: AuthSession = Depends(operator)):
+    f = get_form(db, form_id)
+    correos = payload.get("correos") if isinstance(payload.get("correos"), list) else []
+    filtro = payload.get("filtro") if isinstance(payload.get("filtro"), dict) else None
+    try:
+        n = formas.invite(db, f, filtro, str(payload.get("asunto") or ""), str(payload.get("mensaje") or ""), op.email, correos)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    f.asunto, f.mensaje = str(payload.get("asunto") or "")[:300], str(payload.get("mensaje") or "")[:10000]  # se recuerdan para el siguiente envío
+    db.commit()
+    return {"enviados": n, "modo_prueba": cfg(db, "MODO_PRUEBA", True)}
+
+
+@app.get("/api/formas/{form_id}/exportar")
+def formas_exportar(form_id: int, db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
+    f = get_form(db, form_id)
+    nombre = "_".join(importer.norm(f.titulo).split("_"))[:50] or "formulario"  # solo ASCII en el encabezado
+    return Response(formas.export_xlsx(db, f), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{nombre}_{date.today().isoformat()}.xlsx"'})
+
+
+@app.get("/api/formas/respuestas/{resp_id}/archivo/{campo_id}")
+def formas_archivo(resp_id: int, campo_id: str, db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
+    r = db.get(FormResponse, resp_id)
+    valor = next((x["valor"] for x in (r.respuestas or []) if x["id"] == campo_id and x["tipo"] == "archivo"), "") if r else ""
+    return serve_upload(valor)
+
+
+@app.delete("/api/formas/respuestas/{resp_id}")
+def formas_respuesta_borrar(resp_id: int, db: Session = Depends(get_db), op: AuthSession = Depends(operator)):
+    r = db.get(FormResponse, resp_id)
+    if r is None:
+        raise HTTPException(404, "Respuesta no encontrada.")
+    form_id = r.form_id
+    db.delete(r)
+    log(db, "Sistema", f"Respuesta de {r.nombre or r.correo} borrada del formulario «{r.form.titulo}»", actor=op.email)
+    db.commit()
+    formas.remove_files(form_id, resp_id)
+    return {"ok": True}
+
+
+@app.get("/api/equipos/{team_id}/respuesta/{campo_id}")
+def equipo_respuesta_archivo(team_id: int, campo_id: str, db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
+    t = get_team(db, team_id)
+    valor = next((x["valor"] for x in (t.respuestas or []) if x.get("id") == campo_id and x.get("tipo") == "archivo"), "")
+    return serve_upload(valor)
+
+
+@app.get("/api/public/forma/{slug}")
+def public_forma(slug: str, t: str = "", db: Session = Depends(get_db)):
+    f = db.scalar(select(CustomForm).where(CustomForm.slug == slug))
+    if f is None or not f.activo:
+        raise HTTPException(404, "Este formulario no existe o ya no recibe respuestas.")
+    r = db.scalar(select(FormResponse).where(FormResponse.form_id == f.id, FormResponse.token == t)) if t else None
+    if t and r is None:
+        raise HTTPException(404, "El enlace no es válido. Pide que te lo vuelvan a enviar.")
+    if r is None and not f.abierto:
+        raise HTTPException(403, "Este formulario solo se llena desde el enlace personal que te enviamos por correo.")
+    return {"titulo": f.titulo, "intro": f.intro, "campos": f.campos or [], "boton": f.boton, "mensaje_final": f.mensaje_final,
+            "color": f.color, "coworking": cfg(db, "NOMBRE"), "personal": r is not None,
+            "persona": {"nombre": r.nombre, "correo": r.correo, "equipo": r.team.nombre if r.team else None} if r else None,
+            "respondido": bool(r and r.estado == "Respondido")}
+
+
+@app.post("/api/public/forma/{slug}")
+async def public_forma_enviar(slug: str, request: Request, db: Session = Depends(get_db)):
+    fields, files = await read_form(request)
+    f = db.scalar(select(CustomForm).where(CustomForm.slug == slug))
+    if f is None:
+        raise HTTPException(404, "Este formulario no existe.")
+    try:
+        datos = json.loads(fields.get("datos", "{}"))
+        if not isinstance(datos, dict):
+            raise ValueError
+    except ValueError:
+        raise HTTPException(400, "Formulario inválido.")
+    try:
+        formas.submit(db, f, fields.get("t", ""), datos, files)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    db.commit()
+    return {"ok": True, "mensaje": f.mensaje_final}
+
+
 CONFIG_EDITABLE = ["NOMBRE", "SEMESTRE", "DIAS_MINIMOS", "SEMANAS_UPGRADE", "SEMANAS_DOWNGRADE", "SEMANAS_SIN_USO", "DIAS_RESPUESTA_BAJA",
                    "DIAS_GRACIA", "SEMANAS_PROMEDIO", "AVISO_1", "AVISO_2", "MAX_SEMANAS_PAUSA", "DIAS_HABILES_DECISION", "DIAS_REAPLICACION",
                    "DIAS_RENOVACION", "MESES_ACCESO", "MEDICION", "APROBACION_AUTOMATICA", "MODO_PRUEBA", "MODO_ENVIO", "CUENTA_ENVIO",
@@ -1198,6 +1361,19 @@ def config_put(payload: dict = Body(...), db: Session = Depends(get_db), op: Aut
             raise HTTPException(400, f"{clave} debe ser verdadero o falso.")
         if clave == "MODO_ENVIO" and valor not in ("bandeja", "borrador", "enviar"):
             raise HTTPException(400, "MODO_ENVIO desconocido.")
+        if clave == "FORMULARIOS":
+            if not isinstance(valor, dict):
+                raise HTTPException(400, "FORMULARIOS inválido.")
+            for form in valor.values():
+                if not isinstance(form, dict):
+                    raise HTTPException(400, "FORMULARIOS inválido.")
+                if "color" in form and not re.fullmatch(r"(#[0-9a-fA-F]{6})?", str(form["color"] or "")):
+                    raise HTTPException(400, "El color debe ser como #1d4ed8.")
+                if "preguntas" in form:
+                    try:
+                        form["preguntas"] = formas.clean_fields(form["preguntas"])
+                    except ValueError as exc:
+                        raise HTTPException(400, str(exc))
         if clave in CONFIG_EDITABLE and cfg(db, clave) != valor:
             set_cfg(db, clave, valor)
             cambios.append(clave)

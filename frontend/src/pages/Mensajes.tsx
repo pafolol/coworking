@@ -187,7 +187,7 @@ function Casilla({ activa, onClick, children }: { activa: boolean; onClick: () =
   )
 }
 
-function FiltroPersonas({ catalogo, valor, onChange }: { catalogo: any; valor: Filtro; onChange: (f: Filtro) => void }) {
+export function FiltroPersonas({ catalogo, valor, onChange }: { catalogo: any; valor: Filtro; onChange: (f: Filtro) => void }) {
   const [q, setQ] = useState('')
   const set = (cambio: Partial<Filtro>) => onChange({ ...valor, ...cambio })
   return (
@@ -253,7 +253,7 @@ function FiltroPersonas({ catalogo, valor, onChange }: { catalogo: any; valor: F
 }
 
 /** Cuántas y cuáles personas cumplen el filtro (se recalcula al cambiarlo). */
-function useDestinatarios(filtro: Filtro) {
+export function useDestinatarios(filtro: Filtro) {
   const [res, setRes] = useState<any>(null)
   const clave = JSON.stringify(filtro)
   useEffect(() => {

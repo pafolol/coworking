@@ -24,6 +24,7 @@ import Mensajes from './pages/Mensajes'
 import Niveles from './pages/Niveles'
 import { FormCambios, FormCheckin } from './pages/Publico'
 import { FormSolicitud } from './pages/Solicitud'
+import { FormPropio } from './pages/FormularioPublico'
 import Solicitudes from './pages/Solicitudes'
 import Tareas from './pages/Tareas'
 import { Logo } from './ui'
@@ -164,6 +165,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/f/solicitud" element={<FormSolicitud />} />
       <Route path="/f/checkin" element={<FormCheckin />} />
+      <Route path="/formulario/:slug" element={<FormPropio />} />
       <Route path="/f/cambios" element={<FormCambios />} />
       <Route element={<Protegido />}>
         <Route path="/" element={<Dashboard />} />

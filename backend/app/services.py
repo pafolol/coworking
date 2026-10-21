@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from .db import UPLOADS
 from .mailer import cfg, fecha_larga, log, queue_message, set_cfg
@@ -314,6 +315,8 @@ def submit_application(db: Session, data: dict, files: dict[str, tuple[str, byte
         vistos.add(p["correo"])
     for filename, content in files.values():
         check_upload(filename, content)
+    from . import formas
+    respuestas, archivos_extra = formas.collect(formularios(db)["solicitud"].get("preguntas") or [], data.get("respuestas"), files)
     lider = integrantes[0]
     previo = db.scalar(select(Team).where(Team.estado == S_NO, Team.lider_correo == lider["correo"], Team.fecha_reaplicacion > today)
                        .order_by(Team.fecha_reaplicacion.desc()))
@@ -323,12 +326,15 @@ def submit_application(db: Session, data: dict, files: dict[str, tuple[str, byte
     team = Team(folio=make_folio(db, lider.get("matricula") or lider["correo"]), nombre=data["nombre"].strip(),
                 descripcion=data.get("descripcion", ""), etapa=data.get("etapa", ""), sector=data.get("sector", ""),
                 lider_nombre=lider["nombre"].strip(), lider_correo=lider["correo"], estado=S_SOL, fecha_solicitud=today, fecha_estado=today,
-                respuestas=extra_answers(db, data))
+                respuestas=respuestas)
     db.add(team)
     for i, p in enumerate(integrantes):
         team.members.append(Member(nombre=p["nombre"].strip(), correo=p["correo"], tipo=p["tipo"],
                                    matricula=str(p.get("matricula") or "").strip(), rol="Líder" if i == 0 else "Integrante"))
     db.flush()
+    if archivos_extra:  # archivos de las preguntas extra: se guardan con los documentos del equipo
+        formas.save_files(respuestas, archivos_extra, team.folio)
+        flag_modified(team, "respuestas")  # el JSON cambió por dentro: SQLAlchemy no lo nota solo
     members = list(team.members)
     log(db, "Estado", f"Solicitud recibida · folio {team.folio}", team)
     queue_message(db, "registro", team)
@@ -516,20 +522,6 @@ def formularios(db: Session) -> dict:
     from .defaults import FORMULARIOS
     guardado = cfg(db, "FORMULARIOS", {}) or {}
     return {clave: {**base, **(guardado.get(clave) or {})} for clave, base in FORMULARIOS.items()}
-
-
-def extra_answers(db: Session, data: dict) -> list[dict]:
-    """Respuestas a las preguntas extra del formulario de solicitud, validando las obligatorias."""
-    out = []
-    dadas = data.get("respuestas") or {}
-    for q in formularios(db)["solicitud"].get("preguntas") or []:
-        valor = dadas.get(q["id"])
-        vacio = valor in (None, "", False)
-        if q.get("obligatoria") and vacio:
-            raise ValueError(f"Falta responder: {q['etiqueta']}")
-        if not vacio:
-            out.append({"etiqueta": q["etiqueta"], "valor": "Sí" if valor is True else str(valor)[:2000]})
-    return out
 
 
 # ---------- niveles y beneficios ----------

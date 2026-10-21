@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 import { fechaHora, useApi } from '../api'
 import { Card, Chip, EquipoLink, Estatus, Page, Tabla, useToast, Vacio } from '../ui'
 import EditorFormulario from './EditorFormulario'
+import FormulariosPropios from './FormulariosPropios'
 
 export default function Formularios() {
   const { data: cfg, error, reload } = useApi('/config')
@@ -23,7 +24,7 @@ export default function Formularios() {
   ]
   const copiar = (url: string) => { void navigator.clipboard.writeText(url); toast('Enlace copiado') }
   return (
-    <Page titulo="Formularios" eyebrow="Tres enlaces de este mismo sitio; no hay que iniciar sesión para llenarlos">
+    <Page titulo="Formularios" eyebrow="Los de siempre y los que armes tú; no hay que iniciar sesión para llenarlos">
       <div className="grid gap-5 lg:grid-cols-3">
         {forms.map((f, i) => (
           <div key={f.titulo} className={`flex flex-col rounded-2xl p-5 ${i === 0 ? 'bg-ink text-white' : 'card'}`}>
@@ -45,6 +46,8 @@ export default function Formularios() {
           </div>
         ))}
       </div>
+      <FormulariosPropios />
+
       <p className="mt-3 text-xs text-mute">Los enlaces usan la dirección pública configurada ({cfg.config.PUBLIC_URL}). Cámbiala en Configuración cuando publiques el sitio en un dominio; el QR de check-in se imprime y se rota en Check-ins.</p>
 
       <Card titulo="Lo que ha llegado por el formulario de cambios" className="mt-5" pad={false}>

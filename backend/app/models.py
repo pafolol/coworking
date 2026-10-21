@@ -279,3 +279,41 @@ class User(Base):
     usuario: Mapped[str] = mapped_column(String(60), primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120), default="")
     password_hash: Mapped[str] = mapped_column(String(200))
+
+
+class CustomForm(Base):
+    """Formulario hecho en el editor: se manda por correo (cada persona con su enlace) o se comparte abierto."""
+    __tablename__ = "custom_forms"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(40), unique=True)
+    titulo: Mapped[str] = mapped_column(String(160))
+    intro: Mapped[str] = mapped_column(Text, default="")
+    campos: Mapped[Optional[list]] = mapped_column(JSON)  # [{id, etiqueta, tipo, ayuda, obligatoria, opciones, texto}]
+    boton: Mapped[str] = mapped_column(String(80), default="Enviar")
+    mensaje_final: Mapped[str] = mapped_column(Text, default="")
+    color: Mapped[str] = mapped_column(String(20), default="")
+    abierto: Mapped[bool] = mapped_column(default=False)  # cualquiera con el enlace general puede responder
+    activo: Mapped[bool] = mapped_column(default=True)
+    asunto: Mapped[str] = mapped_column(String(300), default="")
+    mensaje: Mapped[str] = mapped_column(Text, default="")
+    creado: Mapped[datetime]
+    creado_por: Mapped[str] = mapped_column(String(160), default="")
+
+
+class FormResponse(Base):
+    """Una invitación (Pendiente, con su token) o una respuesta (Respondido) a un formulario propio."""
+    __tablename__ = "form_responses"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("custom_forms.id"), index=True)
+    token: Mapped[str] = mapped_column(String(60), unique=True)
+    correo: Mapped[str] = mapped_column(String(160), default="")
+    nombre: Mapped[str] = mapped_column(String(160), default="")
+    team_id: Mapped[Optional[int]] = mapped_column(ForeignKey("teams.id"))
+    member_id: Mapped[Optional[int]] = mapped_column(ForeignKey("members.id"))
+    creado: Mapped[datetime]
+    respondido: Mapped[Optional[datetime]]
+    estado: Mapped[str] = mapped_column(String(20), default="Pendiente")  # Pendiente | Respondido
+    respuestas: Mapped[Optional[list]] = mapped_column(JSON)  # [{id, etiqueta, tipo, valor}]; archivo → ruta en uploads/
+
+    form: Mapped[CustomForm] = relationship()
+    team: Mapped[Optional[Team]] = relationship()

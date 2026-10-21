@@ -3,7 +3,8 @@ import { type FormEvent, useState } from 'react'
 
 import { api, useApi } from '../api'
 import { Campo, Chip } from '../ui'
-import { Archivo, Bloque, Carta, Marco, Pregunta } from './Publico'
+import { agregarRespuestas, CampoRespuesta, faltante, type Valor } from './campos'
+import { Archivo, Bloque, Carta, Marco } from './Publico'
 
 const NUEVO = { nombre: '', correo: '', externo: false, tipo: 'Alumno', matricula: '' }
 
@@ -17,7 +18,7 @@ export function FormSolicitud() {
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [hecho, setHecho] = useState<any>(null)
-  const [extra, setExtra] = useState<Record<string, string | boolean>>({})
+  const [extra, setExtra] = useState<Record<string, Valor>>({})
   if (!info) {
     return (
       <div className="grid min-h-screen place-items-center p-6 text-center text-sm text-mute">
@@ -37,7 +38,7 @@ export function FormSolicitud() {
   const listaDominios = dominios.map(d => `@${d}`).join(' o ')
   // Igual que el servidor: vale el dominio exacto o cualquier subdominio, de cualquiera de los dominios configurados.
   const fueraDeDominio = (p: typeof NUEVO) => {
-    if (p.externo || !dominios.length || !p.correo.includes('@')) return false
+    if (p.externo || p.tipo === 'Exatec' || !dominios.length || !p.correo.includes('@')) return false  // Exatec: cualquier correo
     const host = p.correo.trim().toLowerCase().split('@').pop() ?? ''
     return !dominios.some(d => host === d || host.endsWith(`.${d}`))
   }
@@ -52,11 +53,14 @@ export function FormSolicitud() {
     if (enviando) return
     setError('')
     if (gente.some(fueraDeDominio)) return setError(`Los alumnos y colaboradores deben registrarse con su correo ${listaDominios}. Corrige los correos marcados o marca «Es externo».`)
+    const falta = faltante(cf.preguntas ?? [], extra)
+    if (falta) return setError(falta)
     if (!carta.acepta || !carta.nombre.trim()) return setError('Para enviar la solicitud hay que leer y aceptar la carta compromiso, y escribir el nombre de quien la acepta.')
     setEnviando(true)
     const form = new FormData()
+    const respuestas = agregarRespuestas(form, extra)
     form.append('datos', JSON.stringify({
-      ...f, nombre: f.nombre.trim(), etapa: etapas.includes(f.etapa) ? f.etapa : etapas[0], carta, respuestas: extra,
+      ...f, nombre: f.nombre.trim(), etapa: etapas.includes(f.etapa) ? f.etapa : etapas[0], carta, respuestas,
       integrantes: gente.map(p => ({ nombre: p.nombre.trim(), correo: p.correo.trim(), tipo: p.externo ? 'Externo' : p.tipo, matricula: p.matricula.trim() })),
     }))
     gente.forEach((p, i) => { if (p.externo && ids[i]) form.append(`archivo:identificacion:${i}`, ids[i]!) })
@@ -71,7 +75,7 @@ export function FormSolicitud() {
 
   if (hecho) {
     return (
-      <Marco nombre={info.nombre} titulo="¡Solicitud recibida!">
+      <Marco nombre={info.nombre} titulo="¡Solicitud recibida!" color={cf.color || undefined}>
         <Bloque titulo="Guarda tu folio">
           <p className="mb-3 text-sm text-mute">Lo necesitas para subir documentos o pedir cambios. Toma una captura de pantalla o cópialo.</p>
           <p className="rounded-2xl bg-ink py-6 text-center font-mono text-4xl font-semibold tracking-wider text-spark">{hecho.folio}</p>
@@ -89,24 +93,24 @@ export function FormSolicitud() {
   }
 
   return (
-    <Marco nombre={info.nombre} titulo={cf.titulo} intro={cf.intro}>
+    <Marco nombre={info.nombre} titulo={cf.titulo} intro={cf.intro} color={cf.color || undefined}>
       <form onSubmit={enviar}>
-        <Bloque n="1" titulo="El proyecto">
+        <Bloque n="1" titulo={cf.titulo_proyecto || 'El proyecto'}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2"><Campo label="Nombre del equipo o proyecto"><input required className="input" value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} /></Campo></div>
+            <div className="sm:col-span-2"><Campo label={cf.etiqueta_nombre || 'Nombre del equipo o proyecto'}><input required className="input" value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} /></Campo></div>
             <div className="sm:col-span-2"><Campo label={cf.pregunta_descripcion}><textarea required className="input min-h-28" value={f.descripcion} onChange={e => setF({ ...f, descripcion: e.target.value })} /></Campo></div>
-            <Campo label="Etapa"><select className="input" value={f.etapa} onChange={e => setF({ ...f, etapa: e.target.value })}>{etapas.map(x => <option key={x}>{x}</option>)}</select></Campo>
-            {cf.pedir_sector && <Campo label="Sector"><input className="input" placeholder="Fintech, salud, educación…" value={f.sector} onChange={e => setF({ ...f, sector: e.target.value })} /></Campo>}
+            <Campo label={cf.etiqueta_etapa || 'Etapa'}><select className="input" value={f.etapa} onChange={e => setF({ ...f, etapa: e.target.value })}>{etapas.map(x => <option key={x}>{x}</option>)}</select></Campo>
+            {cf.pedir_sector && <Campo label={cf.etiqueta_sector || 'Sector'}><input className="input" placeholder="Fintech, salud, educación…" value={f.sector} onChange={e => setF({ ...f, sector: e.target.value })} /></Campo>}
             {(cf.preguntas ?? []).map((q: any) => (
-              <div key={q.id} className={q.tipo === 'parrafo' || q.tipo === 'casilla' ? 'sm:col-span-2' : ''}>
-                <Pregunta q={q} valor={extra[q.id]} onChange={v => setExtra({ ...extra, [q.id]: v })} />
+              <div key={q.id} className={['texto', 'numero', 'fecha', 'correo', 'telefono', 'opcion'].includes(q.tipo) ? '' : 'sm:col-span-2'}>
+                <CampoRespuesta q={q} valor={extra[q.id]} sugerido={gente[0].nombre} onChange={v => setExtra(prev => ({ ...prev, [q.id]: v }))} />
               </div>
             ))}
           </div>
         </Bloque>
 
-        <Bloque n="2" titulo="Integrantes">
-          <p className="-mt-2 mb-4 text-sm text-mute">Alumnos y colaboradores se registran con su correo{dominio && <> <b className="text-ink">{listaDominios}</b></>} y su matrícula o nómina. Si alguien es externo, márcalo y sube su identificación. Todos los campos son obligatorios, salvo los que dicen «opcional».</p>
+        <Bloque n="2" titulo={cf.titulo_integrantes || 'Integrantes'}>
+          {cf.texto_integrantes ? <p className="-mt-2 mb-4 whitespace-pre-line text-sm text-mute">{cf.texto_integrantes}</p> : <p className="-mt-2 mb-4 text-sm text-mute">Alumnos y colaboradores se registran con su correo{dominio && <> <b className="text-ink">{listaDominios}</b></>} y su matrícula o nómina. Si alguien es externo, márcalo y sube su identificación. Todos los campos son obligatorios, salvo los que dicen «opcional».</p>}
           <div className="space-y-3">
             {gente.map((p, i) => (
               <div key={i} className={`rounded-xl border p-3 ${p.externo ? 'border-amber-300 bg-amber-50/40' : 'border-line'}`}>
@@ -146,12 +150,12 @@ export function FormSolicitud() {
           <p className="mt-2 text-xs text-mute">El correo de cada integrante es el que usará para hacer check-in con el QR.</p>
         </Bloque>
 
-        <Bloque n="3" titulo="Carta compromiso">
+        <Bloque n="3" titulo={cf.titulo_carta || 'Carta compromiso'}>
           <Carta texto={info.carta} valor={carta} onChange={setCarta} sugerido={gente[0].nombre} />
         </Bloque>
 
         {error && <p role="alert" className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
-        <button className="btn btn-primary w-full !py-3 !text-base" disabled={enviando}>{enviando ? 'Enviando…' : 'Enviar solicitud'} <ArrowRight size={16} /></button>
+        <button className="btn btn-primary w-full !py-3 !text-base" style={cf.color ? { backgroundColor: cf.color, borderColor: cf.color } : undefined} disabled={enviando}>{enviando ? 'Enviando…' : cf.boton || 'Enviar solicitud'} <ArrowRight size={16} /></button>
       </form>
     </Marco>
   )

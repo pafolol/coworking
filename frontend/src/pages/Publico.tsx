@@ -5,14 +5,14 @@ import { useSearchParams } from 'react-router-dom'
 import { api, fecha, useApi } from '../api'
 import { Campo, Chip, Estado, Estatus, Logo } from '../ui'
 
-export function Marco({ titulo, intro, children, nombre }: { titulo: string; intro?: ReactNode; children: ReactNode; nombre?: string }) {
+export function Marco({ titulo, intro, children, nombre, color }: { titulo: string; intro?: ReactNode; children: ReactNode; nombre?: string; color?: string }) {
   return (
     <div className="grid-bg-light min-h-screen pb-16">
-      <header className="grid-bg bg-ink px-5 pb-24 pt-6 text-white">
+      <header className="grid-bg bg-ink px-5 pb-24 pt-6 text-white" style={color ? { backgroundColor: color } : undefined}>
         <div className="mx-auto max-w-2xl">
           <Logo nombre={nombre} claro />
           <h1 className="mt-8 animate-rise text-4xl font-extrabold leading-none sm:text-5xl">{titulo}</h1>
-          {intro && <p className="mt-3 max-w-xl animate-rise text-[15px] leading-relaxed text-white/65">{intro}</p>}
+          {intro && <div className="mt-3 max-w-xl animate-rise whitespace-pre-line text-[15px] leading-relaxed text-white/75">{intro}</div>}
         </div>
       </header>
       <main className="mx-auto -mt-14 max-w-2xl animate-rise px-4">{children}</main>
@@ -52,31 +52,6 @@ export function Archivo({ label, sub, file, onChange }: { label: string; sub?: s
 }
 
 const VACIO = { nombre: '', correo: '', tipo: 'Alumno', matricula: '' }
-
-/** Una pregunta extra definida en el editor de formularios. */
-export function Pregunta({ q, valor, onChange }: { q: any; valor: string | boolean | undefined; onChange: (v: string | boolean) => void }) {
-  const etiqueta = q.etiqueta + (q.obligatoria ? '' : ' (opcional)')
-  if (q.tipo === 'casilla') {
-    return (
-      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3 text-sm">
-        <input type="checkbox" required={q.obligatoria} className="mt-0.5 size-4 shrink-0 accent-brand" checked={valor === true} onChange={e => onChange(e.target.checked)} />
-        <span>{q.etiqueta}</span>
-      </label>
-    )
-  }
-  const texto = typeof valor === 'string' ? valor : ''
-  return (
-    <Campo label={etiqueta}>
-      {q.tipo === 'parrafo' ? <textarea required={q.obligatoria} className="input min-h-24" value={texto} onChange={e => onChange(e.target.value)} />
-        : q.tipo === 'opcion' ? (
-          <select required={q.obligatoria} className="input" value={texto} onChange={e => onChange(e.target.value)}>
-            <option value="">Elige una opción…</option>
-            {(q.opciones ?? []).map((o: string) => <option key={o}>{o}</option>)}
-          </select>
-        ) : <input required={q.obligatoria} className="input" value={texto} onChange={e => onChange(e.target.value)} />}
-    </Campo>
-  )
-}
 
 /** Carta compromiso: se lee, se acepta y se escribe el nombre. No se sube ningún archivo. */
 export function Carta({ texto, valor, onChange, sugerido }: { texto: string; valor: { acepta: boolean; nombre: string }; onChange: (v: { acepta: boolean; nombre: string }) => void; sugerido?: string }) {
@@ -118,7 +93,7 @@ export function FormCheckin() {
     setCargando(false)
   }
   return (
-    <main className="grid-bg flex min-h-screen flex-col items-center justify-center bg-ink p-5 text-white">
+    <main className="grid-bg flex min-h-screen flex-col items-center justify-center bg-ink p-5 text-white" style={info?.formularios.checkin.color ? { backgroundColor: info.formularios.checkin.color } : undefined}>
       <div className="w-full max-w-sm animate-rise">
         <Logo nombre={info?.nombre} claro />
         {!res?.ok ? (
@@ -202,11 +177,11 @@ export function FormCambios() {
     return true
   }
   const nombre = info?.nombre
-  const cf = info?.formularios.cambios ?? { titulo: 'Cambios en tu equipo', intro: '', permitir_altas: true, permitir_bajas: true, permitir_pausa: true }
+  const cf = info?.formularios.cambios ?? { titulo: 'Cambios en tu equipo', intro: '', permitir_altas: true, permitir_bajas: true, permitir_pausa: true, color: '' }
 
   if (!eq) {
     return (
-      <Marco nombre={nombre} titulo={cf.titulo} intro={cf.intro}>
+      <Marco nombre={nombre} titulo={cf.titulo} intro={cf.intro} color={cf.color || undefined}>
         <Bloque titulo="Identifica a tu equipo">
           <form onSubmit={entrar} className="grid gap-3 sm:grid-cols-2">
             <Campo label="Folio"><input required className="input font-mono uppercase" placeholder="CW-XXXX-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false} value={acceso.folio} onChange={e => setAcceso({ ...acceso, folio: e.target.value })} /></Campo>
@@ -225,7 +200,7 @@ export function FormCambios() {
   const sinResolverN = sinResolver.length
   const pausaDisponible = Math.max(0, (info?.max_pausa ?? 2) - (eq.pausa_usada ?? 0))
   return (
-    <Marco nombre={nombre} titulo={eq.nombre} intro={<span className="flex flex-wrap items-center gap-2"><span className="font-mono">{eq.folio}</span><Estado estado={eq.estado} /></span>}>
+    <Marco nombre={nombre} color={cf.color || undefined} titulo={eq.nombre} intro={<span className="flex flex-wrap items-center gap-2"><span className="font-mono">{eq.folio}</span><Estado estado={eq.estado} /></span>}>
       {aviso && <p role={aviso.error ? 'alert' : 'status'} className={`mb-4 rounded-xl px-4 py-3 text-sm font-medium ${aviso.error ? 'bg-red-50 text-red-700' : 'bg-spark text-ink'}`}>{aviso.texto}</p>}
 
       {eq.renovacion_pendiente && (
@@ -244,7 +219,7 @@ export function FormCambios() {
         </Bloque>
       )}
 
-      <Bloque titulo="Identificaciones y otros documentos">
+      <Bloque titulo={cf.titulo_documentos || 'Identificaciones y otros documentos'}>
         {pendientes.length === 0 ? <p className="text-sm text-mute">No hay archivos pendientes. Solo se pide identificación a los integrantes externos.</p> : (
           <>
             <div className="grid gap-2">
@@ -261,7 +236,7 @@ export function FormCambios() {
         )}
       </Bloque>
 
-      <Bloque titulo="Integrantes">
+      <Bloque titulo={cf.titulo_integrantes || 'Integrantes'}>
         <ul className="mb-4 space-y-2">
           {eq.integrantes.map((m: any) => (
             <li key={m.id} className="flex items-center gap-3 rounded-xl border border-line px-3 py-2 text-sm">
@@ -281,7 +256,7 @@ export function FormCambios() {
           onClick={async () => { if (await pedir('Alta de integrante', nuevo, nuevo.tipo === 'Externo' ? `${nuevo.nombre} fue agregado; sube su identificación en la sección de arriba.` : `${nuevo.nombre} fue agregado; gestionaremos su acceso.`)) setNuevo({ ...VACIO }) }}><Plus size={14} /> Agregar</button></>}
       </Bloque>
 
-      {cf.permitir_pausa && <Bloque titulo="Pausa justificada">
+      {cf.permitir_pausa && <Bloque titulo={cf.titulo_pausa || 'Pausa justificada'}>
         <p className="mb-3 text-sm text-mute">Si no podrán usar el espacio por un motivo justificado, pidan una pausa: conservan su lugar. Máximo {info?.max_pausa} semanas por semestre; llevan {eq.pausa_usada}.</p>
         {pausaDisponible < 1 ? <p className="text-sm font-medium text-amber-800">Ya usaron todas sus semanas de pausa de este semestre.</p> : <>
         <div className="grid gap-2 sm:grid-cols-[120px_1fr]">

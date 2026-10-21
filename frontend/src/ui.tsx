@@ -35,7 +35,7 @@ export function Estado({ estado }: { estado: string }) {
 }
 
 const ESTATUS_TONO: Record<string, string> = {
-  Activo: 'verde', Validado: 'verde', Enviado: 'verde', Hecha: 'verde', Aplicado: 'verde', Aplicada: 'verde',
+  Activo: 'verde', Validado: 'verde', Enviado: 'verde', Hecha: 'verde', Aplicado: 'verde', Aplicada: 'verde', Respondido: 'verde',
   Pendiente: 'ambar', 'Por validar': 'ambar', Bandeja: 'ambar', Propuesta: 'lima', Borrador: 'azul', Vencida: 'gris',
   Faltante: 'rojo', Vencido: 'rojo', Rechazado: 'rojo', Error: 'rojo', Revocado: 'gris', Descartado: 'gris',
 }
