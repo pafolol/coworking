@@ -1,4 +1,7 @@
-"""Carga masiva de equipos e integrantes que ya existen, desde cualquier Excel o CSV.
+"""Carga masiva de solicitudes y equipos desde cualquier Excel o CSV (por ejemplo, la exportación de un formulario).
+
+Cada equipo nuevo entra como solicitud por evaluar, salvo que el archivo diga que ya se decidió (columna de decisión
+o un estado en operación). Lo que ya está registrado o viene repetido se aparta y no cuenta como error.
 
 El archivo se lee aquí mismo. A la IA solo se le mandan los NOMBRES de las columnas para que diga a qué campo
 corresponde cada una; los datos de las personas nunca salen del servidor.
@@ -17,14 +20,15 @@ from sqlalchemy.orm import Session
 
 from . import services as sv
 from .mailer import log
-from .models import S_ACT, S_ESP, S_FIJO, S_RIESGO, Access, Member, Space, Team
+from .models import EN_OPERACION, S_ACT, S_BAJA, S_ESP, S_EVA, S_FIJO, S_NO, S_RIESGO, Access, Member, Space, Team
 
 COLUMNAS = ["equipo", "estado", "espacio", "fecha_ingreso", "sector", "etapa", "descripcion",
             "nombre", "correo", "tipo", "matricula", "lider", "acceso_vence"]
-DE_EQUIPO = ("equipo", "estado", "espacio", "fecha_ingreso", "sector", "etapa", "descripcion")
+DE_EQUIPO = ("equipo", "estado", "decision", "espacio", "fecha_ingreso", "sector", "etapa", "descripcion")
 DE_PERSONA = ("nombre", "correo", "tipo", "matricula", "lider", "acceso_vence")
-# Además de las columnas normales: una celda con varios integrantes juntos, o una columna que no se usa.
-CAMPOS = COLUMNAS + ["integrantes_lista", "ignorar"]
+# Además de las columnas de la plantilla: la decisión (aceptado o no), preguntas extra del formulario que se guardan
+# como respuestas de la solicitud, una celda con varios integrantes juntos, o una columna que no se usa.
+CAMPOS = COLUMNAS + ["decision", "respuesta", "integrantes_lista", "ignorar"]
 
 EJEMPLO = [
     ["Equipo Ejemplo", "Espacio fijo", "5", "2026-08-17", "Fintech", "MVP", "Pagos para tienditas", "Ana López Ruiz", "ana.lopez@tec.mx", "Alumno", "A01234567", "sí", "2027-01-31"],
@@ -47,6 +51,8 @@ ALIAS = {
     "lider": "lider", "es_lider": "lider",
     "acceso_vence": "acceso_vence", "vencimiento": "acceso_vence", "vencimiento_acceso": "acceso_vence", "vence": "acceso_vence",
     "vencimiento_del_acceso": "acceso_vence",
+    "decision": "decision", "aceptado": "decision", "aceptada": "decision", "resultado": "decision", "dictamen": "decision",
+    "telefono": "respuesta", "celular": "respuesta", "carrera": "respuesta", "redes_sociales": "respuesta", "red_social": "respuesta",
 }
 
 CORREO_RE = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+")
@@ -151,18 +157,24 @@ Di a qué campo corresponde cada columna. Devuelve SOLO un JSON así:
  "notas": ["..."]}
 
 Campos permitidos:
-- Del equipo: "equipo" (nombre del equipo, proyecto o startup), "estado" (modalidad o estatus), "espacio" (número de lugar, mesa o escritorio asignado),
-  "fecha_ingreso", "sector" (giro o industria), "etapa", "descripcion".
-- De una persona: "nombre", "correo", "tipo" (alumno, colaborador o externo), "matricula" (matrícula o nómina), "lider" (columna que dice si es líder),
-  "acceso_vence" (vencimiento de su acceso o credencial).
+- Del equipo: "equipo" (nombre del equipo, idea, proyecto, startup o empresa), "estado" (modalidad o estatus en el coworking),
+  "decision" (si la solicitud fue aceptada, aprobada, seleccionada o rechazada; también «resultado» o «dictamen»),
+  "espacio" (número de lugar, mesa o escritorio asignado), "fecha_ingreso" (fecha de ingreso; si no hay, la fecha en que se envió
+  la solicitud, como «Submit Date»), "sector" (giro o industria), "etapa", "descripcion" (de qué trata el proyecto, p. ej. «Platícanos de tu proyecto»).
+- De una persona: "nombre", "correo", "tipo" (cómo forma parte de la institución: alumno/estudiante, colaborador/profesor, Exatec/egresado o externo),
+  "matricula" (matrícula o nómina), "lider" (columna que dice si es líder), "acceso_vence" (vencimiento de su acceso o credencial).
+- "respuesta": otra pregunta del formulario que sirve para evaluar la solicitud (teléfono, redes sociales, logros, ventas, empleos, en qué necesita
+  ayuda, qué aporta, mentorías, nivel académico, carrera…). Se guarda tal cual en la solicitud. Puede haber varias.
 - "integrantes_lista": una columna donde vienen VARIAS personas juntas en la misma celda (por ejemplo «Otros integrantes», «Miembros», «Equipo de trabajo»).
-- "ignorar": cualquier otra cosa (números consecutivos, notas, teléfonos, totales).
+- "ignorar": lo que no sirve para evaluar (identificadores internos, números consecutivos, aviso de privacidad, fechas de inicio, tipo de respuesta,
+  columnas técnicas del formulario, totales).
 
 Reglas:
 - "persona" numera a las personas que vienen en la misma fila: si la hoja trae una persona por fila, siempre es 1. Si trae columnas para varias
   («Responsable», «Integrante 2», «Correo integrante 2»…), las columnas de cada una llevan el mismo número.
 - "es_lider": true en las columnas de la persona que es líder, responsable, representante o fundador del equipo.
-- Cada campo de equipo se usa una sola vez por hoja. Cada campo de persona, una vez por número de persona.
+- Cada campo de equipo se usa una sola vez por hoja ("respuesta" puede repetirse). Cada campo de persona, una vez por número de persona.
+- Si la hoja trae una persona por fila con su proyecto (como un formulario de solicitud), esa persona es la líder: "es_lider": true.
 - "usar": false si la hoja no trae equipos ni personas vigentes (por ejemplo bajas, catálogos o instrucciones).
 - Usa el nombre de cada columna EXACTAMENTE como se te dio.
 - "notas": de 1 a 4 frases cortas en español sobre lo que supusiste o no pudiste determinar.
@@ -182,7 +194,7 @@ def clean_spec(columna: str, spec: dict) -> dict:
 def ai_map(hojas: list[dict], instrucciones: str = "") -> tuple[dict[str, list[dict]], list[str], set[str]]:
     """Pide a la IA el mapeo usando solo los nombres de las columnas. Devuelve (mapa por hoja, notas, hojas descartadas)."""
     def seguro(c: str, i: int) -> str:  # un «encabezado» que en realidad es un dato (correo, número, texto largo) no sale del servidor
-        return f"Columna {i + 1}" if "@" in c or len(c) > 80 or re.fullmatch(r"[\d\s./:\-+]+", c) else c
+        return f"Columna {i + 1}" if "@" in c or len(c) > 160 or re.fullmatch(r"[\d\s./:\-+]+", c) else c
     enviados = {h["hoja"]: [seguro(c, i) for i, c in enumerate(h["encabezados"])] for h in hojas}
     entrada = {"hojas": [{"hoja": h["hoja"], "columnas": enviados[h["hoja"]]} for h in hojas]}
     mensajes = [{"role": "system", "content": INSTRUCCIONES_IA}, {"role": "user", "content": json.dumps(entrada, ensure_ascii=False)}]
@@ -242,14 +254,17 @@ def apply_map(hojas: list[dict], mapa: dict[str, list[dict]], descartadas: set[s
             continue
         ultimo_equipo: dict = {}
         for fila in h["filas"]:
-            equipo: dict[str, str] = {}
+            equipo: dict = {}
             personas: dict[int, dict] = {}
             lista: list[dict] = []
+            respuestas: list[dict] = []
             for valor, spec in zip(fila, specs):
                 campo = spec["campo"]
                 if campo == "ignorar" or not valor:
                     continue
-                if campo in DE_EQUIPO:
+                if campo == "respuesta":
+                    respuestas.append({"etiqueta": spec["columna"][:200], "valor": valor[:2000]})
+                elif campo in DE_EQUIPO:
                     equipo.setdefault(campo, valor)
                 elif campo == "integrantes_lista":
                     lista += split_people(valor)
@@ -263,7 +278,7 @@ def apply_map(hojas: list[dict], mapa: dict[str, list[dict]], descartadas: set[s
                 continue  # títulos, totales y filas sin personas
             # Celdas combinadas: si la fila no repite el equipo, es el de la fila anterior.
             if equipo.get("equipo"):
-                ultimo_equipo = equipo
+                ultimo_equipo = equipo = {**equipo, "respuestas": respuestas}
             else:
                 equipo = {**ultimo_equipo, **equipo}
             # Un vencimiento dado una sola vez en la fila vale para todas las personas de esa fila.
@@ -272,7 +287,8 @@ def apply_map(hojas: list[dict], mapa: dict[str, list[dict]], descartadas: set[s
                 n += 1
                 if len(vencimientos) == 1:
                     p.setdefault("acceso_vence", vencimientos[0])
-                filas.append({"fila": n, **{c: equipo.get(c, "") for c in DE_EQUIPO}, **{c: p.get(c, "") for c in DE_PERSONA}})
+                filas.append({"fila": n, **{c: equipo.get(c, "") for c in DE_EQUIPO}, **{c: p.get(c, "") for c in DE_PERSONA},
+                              "respuestas": equipo.get("respuestas") or respuestas})
     return filas
 
 
@@ -342,31 +358,56 @@ def parse_date(value) -> date | None:
     raise ValueError(f"fecha «{value}» no reconocida (usa AAAA-MM-DD o DD/MM/AAAA)")
 
 
-def parse_state(value) -> str:
+def parse_state(value) -> str | None:
+    """Estado que trae el archivo; None si no trae (o dice que sigue en trámite)."""
     key = norm(value)
-    if not key or "cowork" in key or key.startswith("activ") or key in ("acceso", "vigente", "si"):
-        return S_ACT
+    if not key or any(x in key for x in ("solicitud", "pendiente", "evaluacion", "revision", "tramite", "proceso")):
+        return None
+    if key.startswith(("no_", "rechaz", "declin")) or key == "no":
+        return S_NO
     if "fijo" in key:
         return S_FIJO
     if "espera" in key:
         return S_ESP
     if "riesgo" in key:
         return S_RIESGO
-    raise ValueError(f"estado «{value}» no reconocido (usa Coworking, Espacio fijo, Lista de espera o En riesgo)")
+    if "cowork" in key or key.startswith(("activ", "acept", "vigente")) or key in ("acceso", "si"):
+        return S_ACT
+    raise ValueError(f"estado «{value}» no reconocido (usa Coworking, Espacio fijo, Lista de espera, En riesgo o Solicitud)")
+
+
+def parse_decision(value) -> str | None:
+    """«Aceptado», «No aceptado» o None (sin decisión: queda como solicitud por evaluar)."""
+    key = norm(value)
+    if not key:
+        return None
+    if key.startswith(("no", "rechaz", "declin", "deneg", "reject", "deni", "false")) or key == "0":
+        return "No aceptado"
+    if key in ("si", "s", "x", "1", "true", "yes", "ok") or key.startswith(("acept", "aprob", "admit", "selecc", "accept", "approv", "ganador")):
+        return "Aceptado"
+    return None
 
 
 def parse_type(value) -> str | None:
-    """Alumno, Colaborador o Externo; None si no se indica (se deduce después por matrícula y correo)."""
+    """Alumno, Colaborador, Exatec o Externo; None si no se indica o no se reconoce (se deduce por matrícula y correo)."""
     key = norm(value)
     if not key:
         return None
     if key.startswith(("alum", "estud")):
         return "Alumno"
-    if key.startswith(("colab", "emple", "prof", "staff", "docen")):
+    if key.startswith(("colab", "emple", "prof", "staff", "docen", "maestr")):
         return "Colaborador"
-    if key.startswith("ext") or key in ("no", "invitado", "egresado"):
+    if key.startswith(("exa", "egres", "ex_alum", "exalum")):
+        return "Exatec"
+    if key.startswith("ext") or key in ("no", "invitado", "ninguno", "ninguna"):
         return "Externo"
-    raise ValueError(f"tipo «{value}» no reconocido (usa Alumno, Colaborador o Externo)")
+    return None
+
+
+def clean_text(value, corto: bool = False) -> str:
+    """Quita los escapes de los formularios («Startup \\| Tengo clientes»); en campos cortos deja solo lo de antes de «|»."""
+    text = str(value or "").replace("\\|", "|").strip().removeprefix("'")  # el apóstrofo con que Excel marca un texto
+    return text.split("|")[0].strip()[:60] if corto else text
 
 
 def parse_space(value) -> int:
@@ -377,12 +418,20 @@ def parse_space(value) -> int:
 
 
 def build_plan(db: Session, rows: list[dict]) -> dict:
-    """Valida todo sin escribir nada: qué equipos y personas se crearían, y qué filas tienen problema."""
-    existentes = {norm(t.nombre): t for t in db.scalars(select(Team)) if t.estado not in ("Baja", "No aceptado")}
+    """Valida todo sin escribir nada: qué solicitudes, equipos y personas se crearían, qué ya existía y qué tiene problema.
+
+    Lo que ya está registrado o viene repetido en el archivo no es un error: se aparta en «duplicados» y no se importa.
+    """
+    existentes: dict[str, Team] = {}
+    for t in db.scalars(select(Team).order_by(Team.id)):
+        clave = norm(t.nombre)
+        if clave not in existentes or existentes[clave].estado in (S_BAJA, S_NO):  # el vigente gana a uno cerrado
+            existentes[clave] = t
     ocupados = {s.numero for s in db.scalars(select(Space)) if s.team_id}
     dominio = (sv.internal_domains(db) or [""])[0]
     equipos: dict[str, dict] = {}
-    vistos: set[str] = set()
+    vistos: dict[str, str] = {}  # correo → equipo con el que ya viene en este archivo
+    duplicados: list[dict] = []
     for row in rows:
         nombre_equipo = str(row.get("equipo") or "").strip()
         clave = norm(nombre_equipo)
@@ -390,30 +439,52 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
         if eq is None:
             actual = existentes.get(clave) if clave else None
             eq = equipos[clave] = {"nombre": actual.nombre if actual else (nombre_equipo or "(sin equipo)"), "existe": actual is not None,
-                                   "id": actual.id if actual else None, "estado": actual.estado if actual else S_ACT, "espacio": None,
-                                   "fecha_ingreso": None, "sector": "", "etapa": "", "descripcion": "", "errores": [], "avisos": [], "integrantes": []}
+                                   "id": actual.id if actual else None, "estado": actual.estado if actual else None, "estado_dado": None,
+                                   "decision": None, "espacio": None, "fecha_ingreso": None, "sector": "", "etapa": "", "descripcion": "",
+                                   "respuestas": [], "errores": [], "avisos": [], "integrantes": []}
             if not clave:
-                eq["errores"].append("Estas personas no traen equipo.")
-            if actual:
-                eq["avisos"].append("Este equipo ya existe: solo se agregan las personas que falten.")
+                eq["errores"].append("Estas personas no traen equipo o proyecto.")
+        persona = {"fila": row.get("fila"), "nombre": str(row.get("nombre") or "").strip(), "correo": str(row.get("correo") or "").strip().lower(),
+                   "matricula": str(row.get("matricula") or "").strip(), "lider": norm(row.get("lider")) in ("si", "s", "x", "1", "true", "lider", "yes"),
+                   "tipo": "Alumno", "tipo_supuesto": False, "acceso_vence": None, "ok": True, "nota": ""}
+        correo = persona["correo"]
+
+        def apartar(motivo: str) -> None:
+            duplicados.append({"fila": persona["fila"], "nombre": persona["nombre"], "correo": correo, "equipo": eq["nombre"], "motivo": motivo})
+
+        if eq["existe"] and eq["estado"] in (S_BAJA, S_NO):  # se registró antes y se cerró: no se reabre desde un archivo
+            apartar(f"El equipo ya se registró antes ({eq['estado']}).")
+            continue
         try:  # los datos del equipo se toman de la primera fila que los traiga
             if not eq["existe"]:
-                if row.get("estado") not in (None, ""):
-                    eq["estado"] = parse_state(row["estado"])
+                if row.get("estado") not in (None, "") and eq["estado_dado"] is None:
+                    eq["estado_dado"] = parse_state(row["estado"])
+                if row.get("decision") not in (None, "") and eq["decision"] is None:
+                    eq["decision"] = parse_decision(row["decision"])
+                    if eq["decision"] is None and not any("decisión" in a for a in eq["avisos"]):
+                        eq["avisos"].append(f"La decisión «{row['decision']}» no dice si se aceptó: queda por evaluar.")
                 if row.get("espacio") not in (None, "") and eq["espacio"] is None:
                     eq["espacio"] = parse_space(row["espacio"])
                 if row.get("fecha_ingreso") not in (None, "") and eq["fecha_ingreso"] is None:
                     eq["fecha_ingreso"] = parse_date(row["fecha_ingreso"])
                 for campo in ("sector", "etapa", "descripcion"):
-                    eq[campo] = eq[campo] or str(row.get(campo) or "").strip()
+                    eq[campo] = eq[campo] or clean_text(row.get(campo), corto=campo != "descripcion")
+                if not eq["respuestas"] and isinstance(row.get("respuestas"), list):
+                    eq["respuestas"] = [{"etiqueta": str(r.get("etiqueta"))[:200], "valor": clean_text(r.get("valor"))[:2000]}
+                                        for r in row["respuestas"] if isinstance(r, dict) and r.get("valor")]
         except ValueError as exc:
             mensaje = str(exc)[0].upper() + str(exc)[1:] + "."
             if mensaje not in eq["errores"]:
                 eq["errores"].append(mensaje)
 
-        persona = {"fila": row.get("fila"), "nombre": str(row.get("nombre") or "").strip(), "correo": str(row.get("correo") or "").strip().lower(),
-                   "matricula": str(row.get("matricula") or "").strip(), "lider": norm(row.get("lider")) in ("si", "s", "x", "1", "true", "lider", "yes"),
-                   "tipo": "Alumno", "tipo_supuesto": False, "acceso_vence": None, "ok": True, "nota": ""}
+        if correo and correo in vistos:  # la misma persona otra vez (p. ej. mandó el formulario dos veces): se ignora
+            apartar("Repetido en el archivo." if vistos[correo] == eq["nombre"] else f"Ya viene en el archivo con {vistos[correo]}.")
+            continue
+        dueno = sv.email_owner(db, correo) if correo else None
+        if dueno is not None:
+            apartar("Ya está registrado en este equipo." if dueno.team_id == eq["id"] else f"Ya está registrado en {dueno.team.nombre}.")
+            vistos[correo] = eq["nombre"]
+            continue
         try:
             tipo = parse_type(row.get("tipo"))
             if tipo is None:  # sin tipo: se deduce por la matrícula y por el dominio del correo
@@ -421,33 +492,53 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
                 matricula = persona["matricula"].upper()
                 if re.match(r"^L0\d+", matricula):
                     tipo = "Colaborador"
-                elif re.match(r"^A0\d+", matricula) or sv.is_internal_email(db, persona["correo"]):
+                elif re.match(r"^A0\d+", matricula) or sv.is_internal_email(db, correo):
                     tipo = "Alumno"
                 else:
                     tipo = "Externo"
             persona["tipo"] = tipo
             persona["acceso_vence"] = parse_date(row.get("acceso_vence"))
-            if persona["correo"] and persona["correo"] in vistos:
-                raise ValueError("correo repetido en el archivo")
-            sv.check_person(db, persona["nombre"], persona["correo"], tipo)
-            vistos.add(persona["correo"])
+            sv.check_person(db, persona["nombre"], correo, tipo, dominio=False)
+            if tipo not in sv.LIBRE_CORREO and dominio and not sv.is_internal_email(db, correo):
+                persona["nota"] = f"su correo no es @{dominio}"
+            vistos[correo] = eq["nombre"]
         except ValueError as exc:
             persona["ok"], persona["nota"] = False, str(exc)
         eq["integrantes"].append(persona)
 
     usados: dict[int, str] = {}
+    lista = []
     for eq in equipos.values():
+        if not eq["integrantes"] and not eq["errores"]:
+            continue  # todo el equipo ya estaba registrado o viene repetido: queda solo en «duplicados»
+        lista.append(eq)
         buenos = [p for p in eq["integrantes"] if p["ok"]]
         if not eq["existe"]:
+            # Solicitud por evaluar, salvo que el archivo diga que ya se decidió.
+            dado = eq["estado_dado"]
+            if dado in EN_OPERACION:
+                eq["estado"] = dado
+            elif dado == S_NO or eq["decision"] == "No aceptado":
+                eq["estado"] = S_NO
+            elif eq["decision"] == "Aceptado" or eq["espacio"] is not None:
+                eq["estado"] = S_ACT
+            else:
+                eq["estado"] = S_EVA
+            eq["alta"] = "aceptado" if eq["estado"] in EN_OPERACION else "no_aceptado" if eq["estado"] == S_NO else "solicitud"
             if not buenos and not eq["errores"]:
                 eq["errores"].append("Ninguna persona válida: el equipo no se crea.")
             if buenos and not any(p["lider"] for p in buenos):
                 buenos[0]["lider"] = True
-                eq["avisos"].append(f"Sin líder marcado: se toma a {buenos[0]['nombre']}.")
+                if len(buenos) > 1:
+                    eq["avisos"].append(f"Sin líder marcado: se toma a {buenos[0]['nombre']}.")
             for extra in [p for p in buenos if p["lider"]][1:]:
                 extra["lider"] = False
             n = eq["espacio"]
-            if n is not None:
+            if eq["alta"] != "aceptado":
+                if n is not None:
+                    eq["avisos"].append(f"Trae el espacio {n}, pero se asigna hasta que se acepte.")
+                eq["espacio"] = None
+            elif n is not None:
                 if not 1 <= n <= 33:
                     eq["errores"].append(f"El espacio {n} no existe (son del 1 al 33).")
                 elif n in ocupados or n in usados:
@@ -458,20 +549,25 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
                         eq["estado"] = S_FIJO
             elif eq["estado"] in (S_FIJO, S_RIESGO):
                 eq["errores"].append("Dice Espacio fijo pero no trae número de espacio.")
+        else:
+            eq["alta"] = "existente"
+            eq["avisos"].append("Este equipo ya existe: solo se agregan las personas que falten.")
         supuestos = sum(1 for p in buenos if p["tipo_supuesto"])
         if supuestos:
-            eq["avisos"].append(f"{supuestos} persona(s) sin tipo indicado: se dedujo por su matrícula o su correo" + (f" (@{dominio} = interno)." if dominio else "."))
+            eq["avisos"].append(f"{supuestos} persona(s) sin tipo reconocido: se dedujo por su matrícula o su correo" + (f" (@{dominio} = interno)." if dominio else "."))
         eq["importable"] = not eq["errores"] and bool(buenos)
         eq["fecha_ingreso"] = eq["fecha_ingreso"].isoformat() if eq["fecha_ingreso"] else None
         for p in eq["integrantes"]:
             p["acceso_vence"] = p["acceso_vence"].isoformat() if p["acceso_vence"] else None
 
-    lista = list(equipos.values())
     importables = [e for e in lista if e["importable"]]
-    return {"equipos": lista, "resumen": {
-        "equipos_nuevos": sum(1 for e in importables if not e["existe"]),
-        "equipos_existentes": sum(1 for e in importables if e["existe"]),
+    return {"equipos": lista, "duplicados": duplicados, "resumen": {
+        "solicitudes": sum(1 for e in importables if e["alta"] == "solicitud"),
+        "aceptados": sum(1 for e in importables if e["alta"] == "aceptado"),
+        "no_aceptados": sum(1 for e in importables if e["alta"] == "no_aceptado"),
+        "equipos_existentes": sum(1 for e in importables if e["alta"] == "existente"),
         "personas": sum(1 for e in importables for p in e["integrantes"] if p["ok"]),
+        "duplicados": len(duplicados),
         "filas_con_problema": sum(1 for e in lista for p in e["integrantes"] if not p["ok"]) + sum(len(e["errores"]) for e in lista),
         "equipos_omitidos": len(lista) - len(importables)}}
 
@@ -479,7 +575,7 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
 def apply_plan(db: Session, plan: dict, actor: str) -> dict:
     """Crea lo que el plan marcó como importable. No envía ningún correo."""
     today = date.today()
-    creados = personas = 0
+    cuenta = {"solicitudes": 0, "aceptados": 0, "no_aceptados": 0, "personas": 0}
     for eq in plan["equipos"]:
         if not eq["importable"]:
             continue
@@ -488,31 +584,41 @@ def apply_plan(db: Session, plan: dict, actor: str) -> dict:
             team = db.get(Team, eq["id"])
         else:
             lider = next(p for p in buenos if p["lider"])
-            ingreso = date.fromisoformat(eq["fecha_ingreso"]) if eq["fecha_ingreso"] else today
+            fecha = date.fromisoformat(eq["fecha_ingreso"]) if eq["fecha_ingreso"] else today
+            aceptado = eq["alta"] == "aceptado"
             team = Team(folio=sv.make_folio(db, lider["matricula"] or lider["correo"]), nombre=eq["nombre"], descripcion=eq["descripcion"],
                         sector=eq["sector"], etapa=eq["etapa"], lider_nombre=lider["nombre"], lider_correo=lider["correo"], estado=eq["estado"],
-                        fecha_solicitud=ingreso, fecha_estado=today, fecha_aceptacion=ingreso, notas="Importado por carga masiva.")
+                        fecha_solicitud=fecha, fecha_estado=today, fecha_aceptacion=fecha if aceptado else None, respuestas=eq["respuestas"] or None,
+                        notas="Importado por carga masiva." if aceptado else "Solicitud importada por carga masiva.")
+            if eq["alta"] == "no_aceptado":
+                team.fecha_reaplicacion = fecha + timedelta(days=sv.cfg(db, "DIAS_REAPLICACION", 90))
             db.add(team)
             db.flush()
             if eq["espacio"]:
                 space = db.get(Space, eq["espacio"])
-                space.team_id, space.desde = team.id, ingreso
-            creados += 1
+                space.team_id, space.desde = team.id, fecha
+            cuenta[{"aceptado": "aceptados", "no_aceptado": "no_aceptados"}.get(eq["alta"], "solicitudes")] += 1
+        en_operacion = team.estado in EN_OPERACION
         pendientes = 0
         for p in buenos:
             m = Member(nombre=p["nombre"], correo=p["correo"], tipo=p["tipo"], matricula=p["matricula"],
                        rol="Líder" if p["lider"] and not eq["existe"] else "Integrante")
-            if p["acceso_vence"]:
-                m.access = Access(estado="Activo", fecha_alta=today, vencimiento=date.fromisoformat(p["acceso_vence"]))
-            else:
-                m.access = Access()
-                pendientes += 1
+            if en_operacion:  # las solicitudes reciben su acceso cuando se aceptan
+                if p["acceso_vence"]:
+                    m.access = Access(estado="Activo", fecha_alta=today, vencimiento=date.fromisoformat(p["acceso_vence"]))
+                else:
+                    m.access = Access()
+                    pendientes += 1
             team.members.append(m)
-            personas += 1
+            cuenta["personas"] += 1
         db.flush()
-        sv.ensure_required_docs(db, team)
+        if team.estado != S_NO:
+            sv.ensure_required_docs(db, team)
         if pendientes:
             sv.upsert_task(db, "Alta de acceso", sv.R_ACC, f"Capturar el vencimiento de {pendientes} acceso(s) de {team.nombre} (importado)", team)
-        log(db, "Cambio", f"Carga masiva: {'se agregaron' if eq['existe'] else 'equipo creado con'} {len(buenos)} persona(s)", team, actor)
-    log(db, "Sistema", f"Carga masiva: {creados} equipo(s) nuevo(s) y {personas} persona(s)", actor=actor)
-    return {"equipos": creados, "personas": personas}
+        accion = {"existente": "se agregaron", "solicitud": "solicitud registrada con",
+                  "no_aceptado": "solicitud no aceptada registrada con"}.get(eq["alta"], "equipo aceptado creado con")
+        log(db, "Cambio", f"Carga masiva: {accion} {len(buenos)} persona(s)", team, actor)
+    log(db, "Sistema", f"Carga masiva: {cuenta['solicitudes']} solicitud(es) por evaluar, {cuenta['aceptados']} equipo(s) aceptado(s), "
+                       f"{cuenta['no_aceptados']} no aceptado(s) y {cuenta['personas']} persona(s)", actor=actor)
+    return cuenta

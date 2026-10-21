@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { api, fecha, useApi } from '../api'
-import { Page, useToast, Vacio } from '../ui'
+import { Chip, Page, useToast, Vacio } from '../ui'
 import { Evaluar } from './EquipoDetalle'
 
 type Vista = 'evaluar' | 'documentos' | 'aceptadas' | 'no'
@@ -75,7 +75,7 @@ export default function Solicitudes() {
                   <tr key={s.id} className="border-b border-line align-top last:border-0 hover:bg-brand-50/40">
                     <td className="td max-w-md !py-4">
                       <Link to={`/equipos/${s.id}`} className="font-display text-[17px] font-bold leading-tight hover:text-brand">{s.nombre}</Link>
-                      <p className="mono mt-0.5 text-mute">{s.folio}{s.sector && ` · ${s.sector}`}{s.etapa && ` · ${s.etapa}`}</p>
+                      <p className="mono mt-0.5 text-mute">{s.folio}{s.sector && ` · ${s.sector}`}{s.etapa && ` · ${s.etapa}`}{s.importada && <Chip tono="azul" className="ml-2 font-sans">importada</Chip>}</p>
                       <p className="mt-1.5 line-clamp-2 text-[13px] text-mute">{s.descripcion}</p>
                       <p className="mt-1 text-xs text-mute xl:hidden">Líder: {s.lider}</p>
                     </td>

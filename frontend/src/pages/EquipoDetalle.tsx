@@ -277,7 +277,7 @@ function EquipoVista({ id }: { id?: string }) {
             <Campo label="Nombre completo"><input className="input" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} /></Campo>
             <Campo label="Correo"><input className="input" type="email" value={form.correo} onChange={e => setForm({ ...form, correo: e.target.value })} /></Campo>
             <div className="grid grid-cols-2 gap-3">
-              <Campo label="Tipo"><select className="input" value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })}><option>Alumno</option><option>Colaborador</option><option>Externo</option></select></Campo>
+              <Campo label="Tipo"><select className="input" value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })}><option>Alumno</option><option>Colaborador</option><option>Exatec</option><option>Externo</option></select></Campo>
               <Campo label="Matrícula o nómina"><input className="input" value={form.matricula} onChange={e => setForm({ ...form, matricula: e.target.value })} /></Campo>
             </div>
           </div>

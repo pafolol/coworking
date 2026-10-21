@@ -200,7 +200,7 @@ function FiltroPersonas({ catalogo, valor, onChange }: { catalogo: any; valor: F
         <div>
           <span className="label">Tipo de persona</span>
           <Filtros valor={valor.tipo} onChange={tipo => set({ tipo })} opciones={[
-            { id: 'todos', label: 'Todos' }, { id: 'internos', label: 'Internos (alumnos y colaboradores)' }, { id: 'externos', label: 'Externos' },
+            { id: 'todos', label: 'Todos' }, { id: 'internos', label: 'Internos (alumnos, colaboradores y Exatec)' }, { id: 'externos', label: 'Externos' },
           ]} />
         </div>
         <div>

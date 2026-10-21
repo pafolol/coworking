@@ -134,7 +134,7 @@ export function FormSolicitud() {
                     </>
                   ) : (
                     <>
-                      <select className="input" aria-label={`Tipo de integrante ${i + 1}`} value={p.tipo} onChange={e => persona(i, { tipo: e.target.value })}><option>Alumno</option><option>Colaborador</option></select>
+                      <select className="input" aria-label={`Tipo de integrante ${i + 1}`} value={p.tipo} onChange={e => persona(i, { tipo: e.target.value })}><option>Alumno</option><option>Colaborador</option><option>Exatec</option></select>
                       <input required className="input" aria-label={`Matrícula o nómina del integrante ${i + 1}`} autoCapitalize="characters" autoComplete="off" placeholder={p.tipo === 'Alumno' ? 'Matrícula' : 'Número de nómina'} value={p.matricula} onChange={e => persona(i, { matricula: e.target.value })} />
                     </>
                   )}

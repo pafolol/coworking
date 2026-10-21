@@ -561,7 +561,8 @@ def solicitudes(db: Session = Depends(get_db), _: AuthSession = Depends(operator
                     "lider_correo": t.lider_correo, "integrantes": len(activos), "externos": sum(1 for m in activos if m.tipo == "Externo"),
                     "fecha_solicitud": t.fecha_solicitud, "fecha_aceptacion": t.fecha_aceptacion, "fecha_reaplicacion": t.fecha_reaplicacion,
                     "puntaje": t.puntaje, "dias_habiles": habiles, "faltantes": sv.missing_docs(db, t),
-                    "por_validar": sum(1 for d in docs if d.estado == "Por validar")})
+                    "por_validar": sum(1 for d in docs if d.estado == "Por validar"),
+                    "importada": t.notas.startswith("Solicitud importada")})
     return {"solicitudes": out, "meta": cfg(db, "DIAS_HABILES_DECISION", 10), "link": links(db)["solicitud"]}
 
 

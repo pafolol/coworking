@@ -21,7 +21,8 @@ R_ADMIN = "Administración"
 R_EVAL = "Evaluación"
 R_ACC = "Accesos y documentos"
 
-TIPOS = ("Alumno", "Colaborador", "Externo")
+TIPOS = ("Alumno", "Colaborador", "Exatec", "Externo")
+LIBRE_CORREO = ("Exatec", "Externo")  # pueden registrarse con cualquier correo (los Exatec suelen ya no tener el institucional)
 EMAIL_RE = re.compile(r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+)+$")
 
 # Tipos de archivo que se aceptan como documento, con la firma con la que empieza cada uno.
@@ -161,8 +162,11 @@ def email_owner(db: Session, correo: str) -> Member | None:
     return None
 
 
-def check_person(db: Session, nombre: str, correo: str, tipo: str) -> str:
-    """Valida a una persona antes de registrarla y devuelve su correo normalizado. Lanza ValueError con el motivo."""
+def check_person(db: Session, nombre: str, correo: str, tipo: str, dominio: bool = True) -> str:
+    """Valida a una persona antes de registrarla y devuelve su correo normalizado. Lanza ValueError con el motivo.
+
+    Con `dominio=False` no se exige el correo institucional (la carga masiva lo marca como aviso, no como error).
+    """
     nombre, correo = (nombre or "").strip(), (correo or "").strip().lower()
     if not nombre:
         raise ValueError("falta el nombre")
@@ -173,8 +177,8 @@ def check_person(db: Session, nombre: str, correo: str, tipo: str) -> str:
     if tipo not in TIPOS:
         raise ValueError(f"tipo «{tipo}» no reconocido")
     dominios = internal_domains(db)
-    if tipo != "Externo" and dominios and not is_internal_email(db, correo):
-        raise ValueError(f"alumnos y colaboradores deben usar su correo @{dominios[0]}; si no pertenece a la institución, márcalo como externo")
+    if dominio and tipo not in LIBRE_CORREO and dominios and not is_internal_email(db, correo):
+        raise ValueError(f"alumnos y colaboradores deben usar su correo @{dominios[0]}; si no pertenece a la institución, márcalo como Exatec o externo")
     otro = email_owner(db, correo)
     if otro is not None:
         raise ValueError(f"el correo {correo} ya está registrado en {otro.team.nombre}")

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from .mailer import log, queue_message
 from .models import EN_OPERACION, Automation, Member, Team, Template
 
-INTERNOS = ("Alumno", "Colaborador")
+INTERNOS = ("Alumno", "Colaborador", "Exatec")  # comunidad Tec
 FRECUENCIAS = ("una_vez", "diaria", "semanal", "mensual")
 
 

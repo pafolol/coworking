@@ -37,7 +37,7 @@ cd frontend; npm install
 | Solicitudes / Equipos / Espacios / Check-ins | Evaluación con rúbrica, ficha de cada equipo, plano de lugares, QR |
 | Formularios | Los tres enlaces públicos (solicitud, check-in, cambios) con su QR y lo que ha llegado |
 | Accesos / Documentos | Espejo de la plataforma de accesos del campus; documentos que se suben, se revisan en pantalla y se consultan por persona |
-| Importar datos | Sube cualquier Excel o CSV: las columnas se reconocen solas (a OpenAI solo se le mandan los títulos de las columnas, nunca los datos), se pueden ajustar a mano, hay vista previa y luego se importa |
+| Importar datos | Sube cualquier Excel o CSV (p. ej. la exportación del formulario de solicitudes): las columnas se reconocen solas (a OpenAI solo se le mandan los títulos de las columnas, nunca los datos), se pueden ajustar a mano y hay vista previa. Cada equipo nuevo entra como **solicitud por evaluar**, salvo que el archivo diga que ya fue aceptado (columna de decisión o un estado en operación); las demás preguntas del formulario se guardan en la solicitud. Lo ya registrado o repetido se ignora, así que se puede volver a subir el mismo archivo. Tipos de persona: Alumno, Colaborador, Exatec (cualquier correo) y Externo |
 | Cómo funciona | El manual en una página: ciclo de vida, reglas, roles y calendario |
 | Configuración | Umbrales, semanas excluidas, catálogo de documentos, rúbrica, correo |
 

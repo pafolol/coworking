@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FileSpreadsheet, RotateCcw, Sparkles, TriangleAlert, Upload } from 'lucide-react'
+import { CheckCircle2, ChevronRight, Download, FileSpreadsheet, RotateCcw, Sparkles, TriangleAlert, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -7,13 +7,18 @@ import { Card, Chip, Estado, Page, useToast } from '../ui'
 
 const CAMPOS: [string, string][] = [
   ['ignorar', 'No usar'],
-  ['equipo', 'Equipo'], ['estado', 'Estado'], ['espacio', 'Número de espacio'], ['fecha_ingreso', 'Fecha de ingreso'],
-  ['sector', 'Sector'], ['etapa', 'Etapa'], ['descripcion', 'Descripción'],
+  ['equipo', 'Equipo o proyecto'], ['estado', 'Estado'], ['decision', 'Decisión (aceptado o no)'], ['espacio', 'Número de espacio'],
+  ['fecha_ingreso', 'Fecha de ingreso o de solicitud'], ['sector', 'Sector'], ['etapa', 'Etapa'], ['descripcion', 'Descripción'],
+  ['respuesta', 'Respuesta del formulario (se guarda)'],
   ['nombre', 'Nombre de la persona'], ['correo', 'Correo'], ['tipo', 'Tipo de persona'], ['matricula', 'Matrícula o nómina'],
   ['lider', '¿Es líder? (sí/no)'], ['acceso_vence', 'Vencimiento del acceso'],
   ['integrantes_lista', 'Varios integrantes en una celda'],
 ]
 const DE_PERSONA = ['nombre', 'correo', 'tipo', 'matricula', 'lider', 'acceso_vence']
+const ALTA: Record<string, [string, string]> = {
+  solicitud: ['Entra como solicitud', 'azul'], aceptado: ['Entra aceptado', 'verde'], no_aceptado: ['Entra como no aceptado', 'gris'], existente: ['Se agregan personas', 'verde'],
+}
+const EN_OPERACION = ['Activo – Coworking', 'Lista de espera', 'Espacio fijo', 'En riesgo', 'Alerta de baja']
 const MODO: Record<string, string> = {
   ia: 'Columnas reconocidas con IA', plantilla: 'Formato de plantilla: leído directo', manual: 'Columnas ajustadas a mano', local: 'Columnas reconocidas por nombre',
 }
@@ -95,25 +100,30 @@ export default function Importar() {
     if (!h.usar) continue
     const vistos = new Set<string>()
     for (const c of h.columnas) {
-      if (c.campo === 'ignorar' || c.campo === 'integrantes_lista') continue
+      if (['ignorar', 'integrantes_lista', 'respuesta'].includes(c.campo)) continue
       const clave = `${c.campo}|${DE_PERSONA.includes(c.campo) ? c.persona : 1}`
       if (vistos.has(clave) && !repetidos.includes(c.campo)) repetidos.push(c.campo)
       vistos.add(clave)
     }
   }
-  const total = r ? r.equipos_nuevos + r.equipos_existentes : 0
+  const total = r ? r.solicitudes + r.aceptados + r.no_aceptados + r.equipos_existentes : 0
+  // Primero lo que tiene problema, para que no se pierda entre muchas solicitudes.
+  const equipos = [...(res?.plan.equipos ?? [])].sort((a: any, b: any) => Number(a.importable) - Number(b.importable))
 
   return (
-    <Page titulo="Importar datos" eyebrow="Sube tu Excel como lo tengas; las columnas se acomodan solas"
+    <Page titulo="Importar datos" eyebrow="Solicitudes o equipos desde tu Excel; las columnas se acomodan solas"
       acciones={<a className="btn" href={`${API_URL}/importar/plantilla`}><Download size={14} /> Plantilla (opcional)</a>}>
       {hecho && (
         <div className="mb-5 flex flex-wrap items-center gap-4 rounded-2xl bg-ink px-5 py-4 text-white">
           <CheckCircle2 size={28} className="text-spark" />
           <div className="flex-1">
             <p className="font-display text-lg font-bold">Importación terminada</p>
-            <p className="text-sm text-white/65">{hecho.equipos} equipo(s) nuevo(s) y {hecho.personas} persona(s). No se envió ningún correo.</p>
+            <p className="text-sm text-white/65">
+              {hecho.solicitudes} solicitud(es) por evaluar, {hecho.aceptados} equipo(s) aceptado(s){hecho.no_aceptados > 0 && `, ${hecho.no_aceptados} no aceptado(s)`} y {hecho.personas} persona(s). No se envió ningún correo.
+            </p>
           </div>
-          <Link to="/equipos" className="btn btn-spark">Ver equipos</Link>
+          {hecho.solicitudes > 0 && <Link to="/solicitudes" className="btn btn-spark">Ver solicitudes</Link>}
+          {hecho.aceptados > 0 && <Link to="/equipos" className={`btn ${hecho.solicitudes ? '' : 'btn-spark'}`}>Ver equipos</Link>}
         </div>
       )}
 
@@ -206,24 +216,54 @@ export default function Importar() {
 
             <div className="card flex flex-wrap items-center gap-x-8 gap-y-3 p-5">
               <h2 className="w-full text-[15px] font-bold">2 · Vista previa de lo que se va a importar</h2>
-              {[['Equipos nuevos', r.equipos_nuevos], ['Equipos que ya existían', r.equipos_existentes], ['Personas a crear', r.personas], ['Con problema', r.filas_con_problema]].map(([l, v], i) => (
-                <div key={l as string}><p className="eyebrow">{l}</p><p className={`font-display text-3xl font-extrabold leading-none ${i === 3 && v ? 'text-red-600' : ''}`}>{v}</p></div>
-              ))}
+              {([['Solicitudes por evaluar', r.solicitudes], ['Ya aceptados', r.aceptados], ['No aceptados', r.no_aceptados], ['Equipos que ya existían', r.equipos_existentes],
+                ['Personas a crear', r.personas], ['Ya registrados o repetidos', r.duplicados], ['Con problema', r.filas_con_problema]] as [string, number][])
+                .filter(([l, v]) => v > 0 || ['Solicitudes por evaluar', 'Personas a crear', 'Con problema'].includes(l)).map(([l, v]) => (
+                  <div key={l}><p className="eyebrow">{l}</p><p className={`font-display text-3xl font-extrabold leading-none ${l === 'Con problema' && v ? 'text-red-600' : l === 'Ya registrados o repetidos' ? 'text-mute' : ''}`}>{v}</p></div>
+                ))}
               <span className="flex-1" />
               <button className="btn btn-primary !px-4 !py-2.5 !text-sm" disabled={!!ocupado || !r.personas}
-                onClick={() => confirm(`Se crearán ${r.equipos_nuevos} equipo(s) y ${r.personas} persona(s). No se enviará ningún correo. ¿Continuar?`) && importar()}>
-                Aceptar e importar {total} equipo{total === 1 ? '' : 's'} y {r.personas} persona{r.personas === 1 ? '' : 's'}
+                onClick={() => confirm(`Se crearán ${r.solicitudes} solicitud(es) por evaluar, ${r.aceptados} equipo(s) aceptado(s) y ${r.personas} persona(s). No se enviará ningún correo. ¿Continuar?`) && importar()}>
+                Importar {total} equipo{total === 1 ? '' : 's'} y {r.personas} persona{r.personas === 1 ? '' : 's'}
               </button>
-              {r.filas_con_problema > 0 && <p className="w-full text-sm text-mute">Lo marcado en rojo no se importa; lo demás sí. Lo que ya exista no se duplica si vuelves a subir el archivo corregido.</p>}
+              <p className="w-full text-sm text-mute">
+                Los equipos nuevos entran a <b className="text-ink">Solicitudes</b> para aprobarlos a mano, salvo que el archivo diga que ya fueron aceptados (columna de decisión o un estado como «Coworking» o «Espacio fijo»).
+                {r.filas_con_problema > 0 && ' Lo marcado en rojo no se importa; lo demás sí.'} Lo que ya está registrado se ignora: puedes volver a subir el mismo archivo sin duplicar nada.
+              </p>
             </div>
 
+            {res.plan.duplicados.length > 0 && (
+              <details className="card group">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 p-5 text-[15px] font-bold">
+                  <ChevronRight size={16} className="transition group-open:rotate-90" />
+                  Ya registrados o repetidos <Chip>{res.plan.duplicados.length}</Chip>
+                  <span className="text-sm font-normal text-mute">· se ignoran, no hace falta hacer nada</span>
+                </summary>
+                <div className="max-h-96 overflow-y-auto border-t border-line">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {res.plan.duplicados.map((d: any, i: number) => (
+                        <tr key={i} className="border-t border-line first:border-0">
+                          <td className="td"><span className="font-semibold">{d.nombre || '—'}</span><p className="text-xs text-mute">{d.correo || 'sin correo'}</p></td>
+                          <td className="td text-mute">{d.equipo}</td>
+                          <td className="td text-[13px] text-mute">{d.motivo}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+
             <div className="grid gap-5 xl:grid-cols-2">
-              {res.plan.equipos.map((e: any) => (
+              {equipos.map((e: any) => (
                 <Card key={e.nombre} pad={false}
                   titulo={<span className="flex flex-wrap items-center gap-2">{e.nombre}<Estado estado={e.estado} />{e.espacio && <Chip tono="tinta">Espacio {e.espacio}</Chip>}{e.existe && <Chip tono="azul">ya existe</Chip>}</span>}
-                  extra={e.importable ? <Chip tono="verde">Se importa</Chip> : <Chip tono="rojo">No se importa</Chip>}>
+                  extra={e.importable ? <Chip tono={ALTA[e.alta]?.[1] ?? 'verde'}>{ALTA[e.alta]?.[0] ?? 'Se importa'}</Chip> : <Chip tono="rojo">No se importa</Chip>}>
                   <div className="space-y-1 px-5 pb-2 text-[13px]">
-                    {(e.fecha_ingreso || e.sector || e.etapa) && <p className="text-mute">{[e.fecha_ingreso && `Ingreso: ${fecha(e.fecha_ingreso)}`, e.sector, e.etapa].filter(Boolean).join(' · ')}</p>}
+                    {(e.fecha_ingreso || e.sector || e.etapa) && <p className="text-mute">{[e.fecha_ingreso && `${e.alta === 'aceptado' ? 'Ingreso' : 'Fecha'}: ${fecha(e.fecha_ingreso)}`, e.sector, e.etapa].filter(Boolean).join(' · ')}</p>}
+                    {e.descripcion && <p className="line-clamp-2 text-mute">{e.descripcion}</p>}
+                    {e.respuestas?.length > 0 && <p className="text-xs text-mute">{e.respuestas.length} respuesta(s) del formulario se guardan en la solicitud.</p>}
                     {e.errores.map((x: string) => <p key={x} className="flex items-start gap-1.5 text-red-700"><TriangleAlert size={14} className="mt-0.5 shrink-0" />{x}</p>)}
                     {e.avisos.map((x: string) => <p key={x} className="text-amber-800">{x}</p>)}
                   </div>
@@ -233,7 +273,12 @@ export default function Importar() {
                         <tr key={p.fila} className={`border-t border-line ${p.ok ? '' : 'bg-red-50/60'}`}>
                           <td className="td"><span className="font-semibold">{p.nombre || '—'}</span> {p.lider && <Chip tono="lima">Líder</Chip>}<p className="text-xs text-mute">{p.correo || 'sin correo'}</p></td>
                           <td className="td text-mute">{p.tipo}{p.matricula && <span className="mono block">{p.matricula}</span>}</td>
-                          <td className="td text-[13px]">{p.ok ? (p.acceso_vence ? <span className="text-mute">acceso hasta {fecha(p.acceso_vence)}</span> : <span className="text-amber-800">acceso pendiente</span>) : <span className="font-semibold text-red-700">{p.nota}</span>}</td>
+                          <td className="td text-[13px]">
+                            {!p.ok ? <span className="font-semibold text-red-700">{p.nota}</span>
+                              : p.nota ? <span className="text-amber-800">{p.nota}</span>
+                              : EN_OPERACION.includes(e.estado)
+                                ? (p.acceso_vence ? <span className="text-mute">acceso hasta {fecha(p.acceso_vence)}</span> : <span className="text-amber-800">acceso pendiente</span>) : null}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -247,9 +292,9 @@ export default function Importar() {
         {!res && (
           <Card titulo="Qué necesita traer tu archivo">
             <div className="grid gap-4 text-[13px] text-mute md:grid-cols-3">
-              <p><b className="text-ink">Lo mínimo por persona:</b> equipo, nombre y correo. Lo demás es opcional: estado, número de espacio, fecha de ingreso, tipo, matrícula, quién es líder y vencimiento del acceso.</p>
-              <p><b className="text-ink">Cualquier acomodo sirve:</b> una fila por persona, una por equipo con el responsable y los demás integrantes en una celda, títulos arriba, varias hojas.</p>
-              <p><b className="text-ink">Reglas que se revisan:</b> alumnos y colaboradores con correo institucional, correos sin repetir y espacios libres. No se envía ningún correo ni se importan check-ins pasados.</p>
+              <p><b className="text-ink">Lo mínimo por persona:</b> equipo o proyecto, nombre y correo. Lo demás es opcional: tipo (alumno, colaborador, Exatec o externo), matrícula, etapa, descripción, si ya fue aceptado, espacio y vencimiento del acceso. Las demás preguntas de tu formulario se guardan en la solicitud.</p>
+              <p><b className="text-ink">Cualquier acomodo sirve:</b> la exportación de tu formulario, una fila por persona, una por equipo con los demás integrantes en una celda, títulos arriba, varias hojas.</p>
+              <p><b className="text-ink">Entra como solicitud:</b> cada equipo nuevo queda en Solicitudes para aprobarlo a mano, salvo que el archivo diga que ya fue aceptado. Lo que ya está registrado o viene repetido se ignora. No se envía ningún correo.</p>
             </div>
           </Card>
         )}
