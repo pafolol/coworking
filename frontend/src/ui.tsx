@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 
 export const ESTADO_STYLE: Record<string, { chip: string; dot: string }> = {
   'Solicitud recibida': { chip: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' },
@@ -143,7 +144,8 @@ export function Modal({ titulo, onClose, children, ancho = 'max-w-lg' }: { titul
       if (previo?.isConnected) previo.focus({ preventScroll: true })  // el foco vuelve a quien abrió el modal
     }
   }, [])
-  return (
+  // En un portal: la animación de entrada de Page deja un transform que haría al modal «fixed» relativo a la página, no a la pantalla.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-4 pt-[8vh] backdrop-blur-sm" onMouseDown={() => cerrar.current()}>
       <div ref={caja} role="dialog" aria-modal="true" aria-labelledby={idTitulo} tabIndex={-1}
         className={`w-full ${ancho} animate-pop rounded-2xl bg-white shadow-pop outline-none`} onMouseDown={e => e.stopPropagation()}>
@@ -153,7 +155,8 @@ export function Modal({ titulo, onClose, children, ancho = 'max-w-lg' }: { titul
         </div>
         <div className="p-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
