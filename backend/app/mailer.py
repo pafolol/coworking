@@ -3,6 +3,7 @@ import os
 import re
 from datetime import date, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import Config, Log, Member, Message, Team, Template
@@ -113,3 +114,26 @@ def queue_message(db: Session, clave: str, team: Team | None = None, member: Mem
 
     return msg
 
+
+def reparar_mensajes_de_prueba(db: Session) -> int:
+    """Devuelve a su destinatario real los mensajes sin enviar que se crearon en el antiguo «modo prueba».
+
+    Ese modo cambiaba el «Para» al equipo operativo y dejaba al destinatario real solo en el asunto («[PRUEBA → correo] …»).
+    El «Con copia» se recalcula igual que en queue_message: al líder con los integrantes activos; a un integrante, con el líder.
+    """
+    n = 0
+    for m in db.scalars(select(Message).where(Message.estado.in_(["Bandeja", "Error", "Borrador"]), Message.asunto.like("[PRUEBA →%"))):
+        hallado = re.match(r"\[PRUEBA → (.+?)\] (.*)$", m.asunto, re.S)
+        if not hallado or hallado.group(1).startswith("("):  # «(sin destinatario)»: no hay a quién devolverlo
+            continue
+        para, m.asunto = hallado.group(1).strip(), hallado.group(2)
+        cc: list[str] = []
+        team = m.team
+        if team is not None:
+            if para.lower() == (team.lider_correo or "").lower():
+                cc = [x.correo for x in team.members if x.activo and x.correo and x.correo.lower() != para.lower()]
+            elif any(x.correo and x.correo.lower() == para.lower() for x in team.members):
+                cc = [team.lider_correo] if team.lider_correo else []
+        m.para, m.cc, m.prueba = para, ", ".join(cc), False
+        n += 1
+    return n

@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 from . import cuentas, difusion, formas, importer
 from . import services as sv
 from .db import UPLOADS, Base, SessionLocal, engine, get_db
-from .mailer import GOOGLE_AUTH, GOOGLE_TOKEN, GOOGLE_USERINFO, SCOPES, cfg, google_configured, links, log, queue_message, set_cfg
+from .mailer import (GOOGLE_AUTH, GOOGLE_TOKEN, GOOGLE_USERINFO, SCOPES, cfg, google_configured, links, log, queue_message,
+                     reparar_mensajes_de_prueba, set_cfg)
 from .models import (CON_ESPACIO, EN_OPERACION, ESTADOS, S_ACT, S_ALERTA, S_BAJA, S_DOC, S_ESP, S_EVA, S_FIJO, S_SOL,
                      Access, AuthSession, Automation, ChangeRequest, Checkin, Config, CustomForm, Cut, CutItem, Document, FormResponse, GoogleAccount, Log,
                      Member, Message, Space, Task, Team, Template, User)
@@ -48,6 +49,8 @@ async def lifespan(_: FastAPI):
     with SessionLocal() as db:
         bootstrap(db)
         cuentas.ensure_users(db)
+        if reparar_mensajes_de_prueba(db):
+            db.commit()
         if os.environ.get("SEED_DEMO", "1") == "1" and db.scalar(select(Team).limit(1)) is None and db.scalar(select(Log).limit(1)) is None:
             seed(db)
     scheduler = BackgroundScheduler()
