@@ -1,9 +1,9 @@
-import { Copy, Plus, Trash2 } from 'lucide-react'
+import { Copy, Plus, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useRef, useState } from 'react'
 
 import { api, fecha, useApi } from '../api'
-import { Campo, Card, Chip, Page, useAccion, useToast, Vacio } from '../ui'
+import { Campo, Card, Chip, Modal, Page, useAccion, useToast, Vacio } from '../ui'
 
 const REGLAS: [string, string, string][] = [
   ['DIAS_MINIMOS', 'Visitas mínimas por semana', 'por equipo; un día = una visita'],
@@ -30,12 +30,56 @@ function Interruptor({ on, onChange, label, nota }: { on: boolean; onChange: (v:
   )
 }
 
+/** Borra equipos, solicitudes, personas y todo su historial para empezar de cero. Cuentas y configuración se quedan. */
+function ReiniciarDatos({ onClose }: { onClose: () => void }) {
+  const { data } = useApi('/datos/resumen')
+  const toast = useToast()
+  const [password, setPassword] = useState('')
+  const [confirmacion, setConfirmacion] = useState('')
+  const [borrando, setBorrando] = useState(false)
+  const listo = confirmacion.trim().toUpperCase() === 'BORRAR' && !!password
+  const reiniciar = async () => {
+    setBorrando(true)
+    try {
+      await api('/datos/reiniciar', { method: 'POST', body: { password, confirmacion } })
+      toast('Datos reiniciados: el coworking quedó vacío')
+      setTimeout(() => location.assign('/'), 800)
+    } catch (e) {
+      toast((e as Error).message, true)
+      setBorrando(false)
+    }
+  }
+  return (
+    <Modal titulo="Reiniciar datos" onClose={() => !borrando && onClose()}>
+      <div className="space-y-4">
+        <p className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+          <TriangleAlert size={18} className="mt-0.5 shrink-0" />
+          <span>Se borra <b>para siempre</b> lo siguiente, junto con los archivos que subieron (identificaciones, cartas, documentos). No se puede deshacer.</span>
+        </p>
+        <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          {(data ?? []).map((d: any) => <li key={d.nombre} className="flex justify-between gap-2"><span className="text-mute">{d.nombre}</span><b className="font-mono">{d.total}</b></li>)}
+        </ul>
+        <p className="text-xs text-mute">Se conservan las cuentas y contraseñas, la configuración, las plantillas de correo, los formularios (sin sus respuestas), los envíos programados y los 33 espacios, que quedan libres.</p>
+        <Campo label="Tu contraseña"><input type="password" className="input" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} /></Campo>
+        <Campo label="Escribe BORRAR para confirmar"><input className="input font-mono" value={confirmacion} onChange={e => setConfirmacion(e.target.value)} /></Campo>
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <button className="btn" disabled={borrando} onClick={onClose}>Cancelar</button>
+          <button className="btn border-red-600 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50" disabled={!listo || borrando} onClick={reiniciar}>
+            {borrando ? 'Borrando…' : 'Borrar todo y empezar de cero'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Config() {
   const { data, error, reload } = useApi('/config')
   const run = useAccion(reload)
   const toast = useToast()
   const [c, setC] = useState<any>(null)
   const [guardando, setGuardando] = useState(false)
+  const [reiniciando, setReiniciando] = useState(false)
   const previa = useRef<any>(null)
   // Un refetch (p. ej. tras «Correr ahora») no debe pisar lo que se está editando sin guardar.
   useEffect(() => {
@@ -231,7 +275,15 @@ export default function Config() {
             <textarea className="input min-h-56 text-[13px] leading-relaxed" value={c.CARTA_COMPROMISO ?? ''} onChange={e => set('CARTA_COMPROMISO', e.target.value)} />
           </Campo></div>
         </Card>
+
+        <Card titulo="Empezar de cero" className="border-red-200 xl:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="max-w-2xl text-sm text-mute">Borra todos los equipos, solicitudes, personas, accesos, check-ins, documentos, tareas, correos y la bitácora. Las cuentas, contraseñas y esta configuración no se tocan.</span>
+            <button className="btn border-red-300 text-red-700 hover:bg-red-50" onClick={() => setReiniciando(true)}><RotateCcw size={14} /> Reiniciar datos</button>
+          </div>
+        </Card>
       </div>
+      {reiniciando && <ReiniciarDatos onClose={() => setReiniciando(false)} />}
     </Page>
   )
 }

@@ -2,6 +2,7 @@
 import json
 import os
 import secrets
+import shutil
 import re
 from collections import Counter
 from contextlib import asynccontextmanager
@@ -13,7 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from . import cuentas, difusion, formas, importer
@@ -48,7 +49,7 @@ async def lifespan(_: FastAPI):
     with SessionLocal() as db:
         bootstrap(db)
         cuentas.ensure_users(db)
-        if os.environ.get("SEED_DEMO", "1") == "1" and db.scalar(select(Team).limit(1)) is None:
+        if os.environ.get("SEED_DEMO", "1") == "1" and db.scalar(select(Team).limit(1)) is None and db.scalar(select(Log).limit(1)) is None:
             seed(db)
     scheduler = BackgroundScheduler()
     scheduler.add_job(lambda: job(sv.daily_review), "cron", hour=8, minute=0)          # diario, 8:00
@@ -1381,6 +1382,37 @@ def config_put(payload: dict = Body(...), db: Session = Depends(get_db), op: Aut
         log(db, "Sistema", "Configuración actualizada: " + ", ".join(cambios), actor=op.email)
     db.commit()
     return {"cambios": cambios}
+
+
+# Lo que borra «Reiniciar datos», en orden para no romper llaves foráneas. Se conservan cuentas, sesiones,
+# configuración, plantillas, formularios propios (sin sus respuestas), envíos programados y los 33 espacios.
+DATOS = [(FormResponse, "Respuestas de formularios"), (CutItem, None), (Cut, "Cortes"), (Checkin, "Check-ins"),
+         (Task, "Tareas"), (Log, "Movimientos de bitácora"), (Message, "Correos"), (ChangeRequest, "Trámites de cambios"),
+         (Document, "Documentos"), (Access, None), (Member, "Personas"), (Team, "Equipos y solicitudes")]
+
+
+@app.get("/api/datos/resumen")
+def datos_resumen(db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
+    return [{"nombre": nombre, "total": db.scalar(select(func.count()).select_from(modelo))} for modelo, nombre in DATOS if nombre]
+
+
+@app.post("/api/datos/reiniciar")
+def datos_reiniciar(payload: dict = Body(...), db: Session = Depends(get_db), op: AuthSession = Depends(operator)):
+    """Deja el coworking vacío para empezar de cero. Pide la contraseña de quien lo hace y escribir BORRAR."""
+    if str(payload.get("confirmacion") or "").strip().upper() != "BORRAR":
+        raise HTTPException(400, "Escribe BORRAR para confirmar.")
+    user = db.get(User, op.email)
+    if user is None or not cuentas.check_password(str(payload.get("password") or ""), user.password_hash):
+        raise HTTPException(403, "La contraseña no es correcta.")
+    borrados = {nombre: db.scalar(select(func.count()).select_from(modelo)) for modelo, nombre in DATOS if nombre}
+    db.execute(update(Space).values(team_id=None, desde=None))
+    for modelo, _ in DATOS:
+        db.execute(delete(modelo))
+    log(db, "Sistema", "Datos reiniciados: " + ", ".join(f"{n} {k.lower()}" for k, n in borrados.items() if n), actor=op.email)
+    db.commit()
+    for hijo in UPLOADS.iterdir():  # identificaciones, cartas y archivos de formularios
+        shutil.rmtree(hijo, ignore_errors=True) if hijo.is_dir() else hijo.unlink(missing_ok=True)
+    return {"borrados": borrados}
 
 
 @app.get("/api/bitacora")
