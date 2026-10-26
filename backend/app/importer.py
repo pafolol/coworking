@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from . import services as sv
 from .mailer import log
-from .models import EN_OPERACION, S_ACT, S_BAJA, S_ESP, S_EVA, S_FIJO, S_NO, S_RIESGO, Access, Member, Space, Team
+from .models import EN_OPERACION, S_ACT, S_BAJA, S_ESP, S_EVA, S_FIJO, S_NO, S_RIESGO, Access, Member, Team
 
 COLUMNAS = ["equipo", "estado", "espacio", "fecha_ingreso", "sector", "etapa", "descripcion",
             "nombre", "correo", "tipo", "matricula", "lider", "acceso_vence"]
@@ -427,7 +427,6 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
         clave = norm(t.nombre)
         if clave not in existentes or existentes[clave].estado in (S_BAJA, S_NO):  # el vigente gana a uno cerrado
             existentes[clave] = t
-    ocupados = {s.numero for s in db.scalars(select(Space)) if s.team_id}
     dominio = (sv.internal_domains(db) or [""])[0]
     equipos: dict[str, dict] = {}
     vistos: dict[str, str] = {}  # correo → equipo con el que ya viene en este archivo
@@ -506,7 +505,6 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
             persona["ok"], persona["nota"] = False, str(exc)
         eq["integrantes"].append(persona)
 
-    usados: dict[int, str] = {}
     lista = []
     for eq in equipos.values():
         if not eq["integrantes"] and not eq["errores"]:
@@ -514,17 +512,17 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
         lista.append(eq)
         buenos = [p for p in eq["integrantes"] if p["ok"]]
         if not eq["existe"]:
-            # Solicitud por evaluar, salvo que el archivo diga que ya se decidió.
+            # Todo equipo nuevo entra como solicitud por evaluar: se acepta (y se le asigna espacio) desde Solicitudes.
+            # Lo que el archivo diga del estado, la decisión o el espacio solo queda como referencia para quien evalúa.
+            eq["estado"], eq["alta"] = S_EVA, "solicitud"
             dado = eq["estado_dado"]
-            if dado in EN_OPERACION:
-                eq["estado"] = dado
-            elif dado == S_NO or eq["decision"] == "No aceptado":
-                eq["estado"] = S_NO
-            elif eq["decision"] == "Aceptado" or eq["espacio"] is not None:
-                eq["estado"] = S_ACT
-            else:
-                eq["estado"] = S_EVA
-            eq["alta"] = "aceptado" if eq["estado"] in EN_OPERACION else "no_aceptado" if eq["estado"] == S_NO else "solicitud"
+            referencia = [f"el archivo dice «{dado}»" if dado and dado != S_EVA else "",
+                          f"decisión: {eq['decision']}" if eq["decision"] else "",
+                          f"espacio {eq['espacio']}" if eq["espacio"] is not None else ""]
+            eq["referencia"] = ", ".join(r for r in referencia if r)
+            if eq["referencia"]:
+                eq["avisos"].append(f"Entra como solicitud por evaluar ({eq['referencia']}); se acepta desde Solicitudes.")
+            eq["espacio"] = None
             if not buenos and not eq["errores"]:
                 eq["errores"].append("Ninguna persona válida: el equipo no se crea.")
             if buenos and not any(p["lider"] for p in buenos):
@@ -533,22 +531,6 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
                     eq["avisos"].append(f"Sin líder marcado: se toma a {buenos[0]['nombre']}.")
             for extra in [p for p in buenos if p["lider"]][1:]:
                 extra["lider"] = False
-            n = eq["espacio"]
-            if eq["alta"] != "aceptado":
-                if n is not None:
-                    eq["avisos"].append(f"Trae el espacio {n}, pero se asigna hasta que se acepte.")
-                eq["espacio"] = None
-            elif n is not None:
-                if not 1 <= n <= 33:
-                    eq["errores"].append(f"El espacio {n} no existe (son del 1 al 33).")
-                elif n in ocupados or n in usados:
-                    eq["errores"].append(f"El espacio {n} ya está ocupado" + (f" por {usados[n]} en este archivo." if n in usados else "."))
-                else:
-                    usados[n] = eq["nombre"]
-                    if eq["estado"] not in (S_FIJO, S_RIESGO):
-                        eq["estado"] = S_FIJO
-            elif eq["estado"] in (S_FIJO, S_RIESGO):
-                eq["errores"].append("Dice Espacio fijo pero no trae número de espacio.")
         else:
             eq["alta"] = "existente"
             eq["avisos"].append("Este equipo ya existe: solo se agregan las personas que falten.")
@@ -563,8 +545,6 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
     importables = [e for e in lista if e["importable"]]
     return {"equipos": lista, "duplicados": duplicados, "resumen": {
         "solicitudes": sum(1 for e in importables if e["alta"] == "solicitud"),
-        "aceptados": sum(1 for e in importables if e["alta"] == "aceptado"),
-        "no_aceptados": sum(1 for e in importables if e["alta"] == "no_aceptado"),
         "equipos_existentes": sum(1 for e in importables if e["alta"] == "existente"),
         "personas": sum(1 for e in importables for p in e["integrantes"] if p["ok"]),
         "duplicados": len(duplicados),
@@ -575,7 +555,7 @@ def build_plan(db: Session, rows: list[dict]) -> dict:
 def apply_plan(db: Session, plan: dict, actor: str) -> dict:
     """Crea lo que el plan marcó como importable. No envía ningún correo."""
     today = date.today()
-    cuenta = {"solicitudes": 0, "aceptados": 0, "no_aceptados": 0, "personas": 0}
+    cuenta = {"solicitudes": 0, "personas": 0}
     for eq in plan["equipos"]:
         if not eq["importable"]:
             continue
@@ -585,19 +565,13 @@ def apply_plan(db: Session, plan: dict, actor: str) -> dict:
         else:
             lider = next(p for p in buenos if p["lider"])
             fecha = date.fromisoformat(eq["fecha_ingreso"]) if eq["fecha_ingreso"] else today
-            aceptado = eq["alta"] == "aceptado"
             team = Team(folio=sv.make_folio(db, lider["matricula"] or lider["correo"]), nombre=eq["nombre"], descripcion=eq["descripcion"],
                         sector=eq["sector"], etapa=eq["etapa"], lider_nombre=lider["nombre"], lider_correo=lider["correo"], estado=eq["estado"],
-                        fecha_solicitud=fecha, fecha_estado=today, fecha_aceptacion=fecha if aceptado else None, respuestas=eq["respuestas"] or None,
-                        notas="Importado por carga masiva." if aceptado else "Solicitud importada por carga masiva.")
-            if eq["alta"] == "no_aceptado":
-                team.fecha_reaplicacion = fecha + timedelta(days=sv.cfg(db, "DIAS_REAPLICACION", 90))
+                        fecha_solicitud=fecha, fecha_estado=today, respuestas=eq["respuestas"] or None,
+                        notas="Solicitud importada por carga masiva." + (f" En el archivo: {eq['referencia']}." if eq.get("referencia") else ""))
             db.add(team)
             db.flush()
-            if eq["espacio"]:
-                space = db.get(Space, eq["espacio"])
-                space.team_id, space.desde = team.id, fecha
-            cuenta[{"aceptado": "aceptados", "no_aceptado": "no_aceptados"}.get(eq["alta"], "solicitudes")] += 1
+            cuenta["solicitudes"] += 1
         en_operacion = team.estado in EN_OPERACION
         pendientes = 0
         for p in buenos:
@@ -616,9 +590,7 @@ def apply_plan(db: Session, plan: dict, actor: str) -> dict:
             sv.ensure_required_docs(db, team)
         if pendientes:
             sv.upsert_task(db, "Alta de acceso", sv.R_ACC, f"Capturar el vencimiento de {pendientes} acceso(s) de {team.nombre} (importado)", team)
-        accion = {"existente": "se agregaron", "solicitud": "solicitud registrada con",
-                  "no_aceptado": "solicitud no aceptada registrada con"}.get(eq["alta"], "equipo aceptado creado con")
+        accion = "se agregaron" if eq["existe"] else "solicitud registrada con"
         log(db, "Cambio", f"Carga masiva: {accion} {len(buenos)} persona(s)", team, actor)
-    log(db, "Sistema", f"Carga masiva: {cuenta['solicitudes']} solicitud(es) por evaluar, {cuenta['aceptados']} equipo(s) aceptado(s), "
-                       f"{cuenta['no_aceptados']} no aceptado(s) y {cuenta['personas']} persona(s)", actor=actor)
+    log(db, "Sistema", f"Carga masiva: {cuenta['solicitudes']} solicitud(es) por evaluar y {cuenta['personas']} persona(s)", actor=actor)
     return cuenta
