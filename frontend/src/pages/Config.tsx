@@ -104,7 +104,6 @@ export default function Config() {
     }
     if (!Number.isInteger(c.DIAS_RENOVACION) || c.DIAS_RENOVACION < 1 || c.DIAS_RENOVACION > 365) return toast('«Días para completar la renovación» debe ser un número entre 1 y 365.', true)
     if (c.SEMANAS_EXCLUIDAS.some((s: any) => !s.inicio)) return toast('Una semana excluida no tiene fecha: complétala o quítala.', true)
-    if (c.RUBRICA.some((r: any) => !r.criterio.trim())) return toast('Un criterio de la rúbrica no tiene nombre: complétalo o quítalo.', true)
     if (c.CATALOGO_DOCS.some((d: any) => !d.nombre.trim())) return toast('Un documento del catálogo no tiene nombre: complétalo o quítalo.', true)
     // Solo lo que cambió: así no se pisan otros ajustes (niveles, formularios) editados desde otras pantallas.
     const cambios = Object.fromEntries(Object.entries(c).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(data.config[k])))
@@ -239,19 +238,6 @@ export default function Config() {
               </div>
             ))}
           </div>
-        </Card>
-
-        <Card titulo="Rúbrica de evaluación" extra={<button className="btn" onClick={() => set('RUBRICA', [...c.RUBRICA, { criterio: '', peso: 10 }])}><Plus size={14} /> Agregar</button>}>
-          <div className="space-y-2">
-            {c.RUBRICA.map((r: any, i: number) => (
-              <div key={i} className="flex gap-2">
-                <input className="input" placeholder="Criterio" aria-label="Criterio" value={r.criterio} onChange={e => lista('RUBRICA', i, 'criterio', e.target.value)} />
-                <input type="number" min={0} className="input !w-20 font-mono" aria-label="Peso del criterio" value={r.peso} onChange={e => lista('RUBRICA', i, 'peso', Number(e.target.value))} />
-                <button className="btn btn-ghost !px-2 text-mute" aria-label="Quitar criterio" title="Quitar" onClick={() => quitar('RUBRICA', i)}><Trash2 size={14} /></button>
-              </div>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-mute">Cada criterio se califica de 1 a 5; los pesos suman {c.RUBRICA.reduce((s: number, r: any) => s + (r.peso || 0), 0)}.</p>
         </Card>
 
         <Card titulo="Catálogo de documentos" className="xl:col-span-2"

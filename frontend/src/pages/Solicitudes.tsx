@@ -2,17 +2,17 @@ import { Copy, ExternalLink } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { api, fecha, useApi } from '../api'
+import { fecha, useApi } from '../api'
 import { Chip, Page, useToast, Vacio } from '../ui'
-import { Evaluar } from './EquipoDetalle'
+import { Revisar } from './EquipoDetalle'
 
 type Vista = 'evaluar' | 'documentos' | 'aceptadas' | 'no'
 
 const VISTAS: { id: Vista; titulo: string; ayuda: string; vacio: string }[] = [
-  { id: 'evaluar', titulo: 'Por evaluar', ayuda: 'Ya tienen todo. Falta que el comité las califique con la rúbrica.', vacio: 'No hay solicitudes esperando evaluación.' },
-  { id: 'documentos', titulo: 'Esperando al equipo', ayuda: 'Les falta algo (por ejemplo, la identificación de un externo). Ya se les avisó; no hay nada que hacer hasta que lo suban.', vacio: 'Ningún equipo tiene pendientes.' },
+  { id: 'evaluar', titulo: 'Por revisar', ayuda: 'Abre cada solicitud con «Revisar» para ver todo del equipo y de sus integrantes, y acéptala o recházala.', vacio: 'No hay solicitudes por revisar.' },
+  { id: 'documentos', titulo: 'Esperando al equipo', ayuda: 'Les falta algo (por ejemplo, la identificación de un externo). Ya se les avisó; también puedes revisarlas y decidir sin esperar.', vacio: 'Ningún equipo tiene pendientes.' },
   { id: 'aceptadas', titulo: 'Aceptadas (30 días)', ayuda: 'Ya recibieron su bienvenida y están en operación.', vacio: 'Sin aceptaciones recientes.' },
-  { id: 'no', titulo: 'No aceptadas', ayuda: 'Recibieron retroalimentación y la fecha desde la que pueden volver a aplicar.', vacio: 'Sin solicitudes no aceptadas.' },
+  { id: 'no', titulo: 'Rechazadas', ayuda: 'Recibieron el aviso y la fecha desde la que pueden volver a aplicar.', vacio: 'Sin solicitudes rechazadas.' },
 ]
 
 const vistaDe = (s: any): Vista =>
@@ -21,18 +21,11 @@ const vistaDe = (s: any): Vista =>
 export default function Solicitudes() {
   const { data, error, reload } = useApi('/solicitudes')
   const [vista, setVista] = useState<Vista>('evaluar')
-  const [evaluando, setEvaluando] = useState<any>(null)
-  const [abriendo, setAbriendo] = useState(false)
+  const [revisando, setRevisando] = useState<number | null>(null)
   const toast = useToast()
   if (!data) return error ? <Page titulo="Solicitudes"><Vacio>{error}</Vacio></Page> : null
   const lista = data.solicitudes.filter((s: any) => vistaDe(s) === vista)
   const actual = VISTAS.find(v => v.id === vista)!
-  const abrir = async (id: number) => {
-    if (abriendo) return
-    setAbriendo(true)
-    try { setEvaluando(await api(`/equipos/${id}`)) } catch (e) { toast((e as Error).message, true) }
-    setAbriendo(false)
-  }
   return (
     <Page titulo="Solicitudes" eyebrow="Convocatoria abierta"
       acciones={<>
@@ -95,12 +88,12 @@ export default function Solicitudes() {
                       {vista === 'documentos' && (
                         s.faltantes.length ? <ul className="list-disc space-y-0.5 pl-4 text-[13px] text-amber-800">{s.faltantes.map((x: string) => <li key={x}>{x}</li>)}</ul> : <span className="text-mute">En revisión</span>
                       )}
-                      {vista === 'aceptadas' && <p className="text-[13px]"><b className="text-emerald-700">Aceptada</b> el {fecha(s.fecha_aceptacion)}{s.puntaje != null && <span className="text-mute"> · puntaje {s.puntaje}</span>}</p>}
-                      {vista === 'no' && <p className="text-[13px] text-mute">desde el {fecha(s.fecha_reaplicacion)}{s.puntaje != null && ` · puntaje ${s.puntaje}`}</p>}
+                      {vista === 'aceptadas' && <p className="text-[13px]"><b className="text-emerald-700">Aceptada</b> el {fecha(s.fecha_aceptacion)}</p>}
+                      {vista === 'no' && <p className="text-[13px] text-mute">desde el {fecha(s.fecha_reaplicacion)}</p>}
                     </td>
                     <td className="td whitespace-nowrap !py-4 text-right">
-                      {vista === 'evaluar'
-                        ? <button className="btn btn-primary" disabled={abriendo} onClick={() => abrir(s.id)}>Evaluar</button>
+                      {vista === 'evaluar' || vista === 'documentos'
+                        ? <button className={`btn ${vista === 'evaluar' ? 'btn-primary' : ''}`} onClick={() => setRevisando(s.id)}>Revisar</button>
                         : <Link className="btn" to={`/equipos/${s.id}`}>Ver ficha</Link>}
                     </td>
                   </tr>
@@ -110,8 +103,8 @@ export default function Solicitudes() {
           </table></div>
         )}
       </div>
-      <p className="mt-3 text-xs text-mute">Meta de servicio: decisión en máximo {data.meta} días hábiles desde que se recibe la solicitud. El comité se reúne los martes.</p>
-      {evaluando && <Evaluar t={evaluando} onClose={() => setEvaluando(null)} reload={reload} />}
+      <p className="mt-3 text-xs text-mute">Meta de servicio: decisión en máximo {data.meta} días hábiles desde que se recibe la solicitud.</p>
+      {revisando && <Revisar id={revisando} onClose={() => setRevisando(null)} reload={reload} />}
     </Page>
   )
 }

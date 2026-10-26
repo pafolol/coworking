@@ -119,7 +119,7 @@ export default function Importar() {
           <div className="flex-1">
             <p className="font-display text-lg font-bold">Importación terminada</p>
             <p className="text-sm text-white/65">
-              {hecho.solicitudes} solicitud(es) por evaluar y {hecho.personas} persona(s). Acéptalas desde Solicitudes. No se envió ningún correo.
+              {hecho.solicitudes} solicitud(es) por revisar y {hecho.personas} persona(s). Acéptalas desde Solicitudes. No se envió ningún correo.
             </p>
           </div>
           {hecho.solicitudes > 0 && <Link to="/solicitudes" className="btn btn-spark">Ver solicitudes</Link>}
@@ -215,18 +215,18 @@ export default function Importar() {
 
             <div className="card flex flex-wrap items-center gap-x-8 gap-y-3 p-5">
               <h2 className="w-full text-[15px] font-bold">2 · Vista previa de lo que se va a importar</h2>
-              {([['Solicitudes por evaluar', r.solicitudes], ['Equipos que ya existían', r.equipos_existentes],
+              {([['Solicitudes por revisar', r.solicitudes], ['Equipos que ya existían', r.equipos_existentes],
                 ['Personas a crear', r.personas], ['Ya registrados o repetidos', r.duplicados], ['Con problema', r.filas_con_problema]] as [string, number][])
-                .filter(([l, v]) => v > 0 || ['Solicitudes por evaluar', 'Personas a crear', 'Con problema'].includes(l)).map(([l, v]) => (
+                .filter(([l, v]) => v > 0 || ['Solicitudes por revisar', 'Personas a crear', 'Con problema'].includes(l)).map(([l, v]) => (
                   <div key={l}><p className="eyebrow">{l}</p><p className={`font-display text-3xl font-extrabold leading-none ${l === 'Con problema' && v ? 'text-red-600' : l === 'Ya registrados o repetidos' ? 'text-mute' : ''}`}>{v}</p></div>
                 ))}
               <span className="flex-1" />
               <button className="btn btn-primary !px-4 !py-2.5 !text-sm" disabled={!!ocupado || !r.personas}
-                onClick={() => confirm(`Se crearán ${r.solicitudes} solicitud(es) por evaluar y ${r.personas} persona(s). No se enviará ningún correo. ¿Continuar?`) && importar()}>
+                onClick={() => confirm(`Se crearán ${r.solicitudes} solicitud(es) por revisar y ${r.personas} persona(s). No se enviará ningún correo. ¿Continuar?`) && importar()}>
                 Importar {total} equipo{total === 1 ? '' : 's'} y {r.personas} persona{r.personas === 1 ? '' : 's'}
               </button>
               <p className="w-full text-sm text-mute">
-                Todos los equipos nuevos entran a <b className="text-ink">Solicitudes</b> como «Por evaluar» y desde ahí se aceptan (y se les asigna espacio). Si el archivo trae estado, decisión o espacio, queda anotado en la solicitud como referencia.
+                Todos los equipos nuevos entran a <b className="text-ink">Solicitudes</b> como «Por revisar» y desde ahí se aceptan (y se les asigna espacio). Si el archivo trae estado, decisión o espacio, queda anotado en la solicitud como referencia.
                 {r.filas_con_problema > 0 && ' Lo marcado en rojo no se importa; lo demás sí.'} Lo que ya está registrado se ignora: puedes volver a subir el mismo archivo sin duplicar nada.
               </p>
             </div>
@@ -293,7 +293,7 @@ export default function Importar() {
             <div className="grid gap-4 text-[13px] text-mute md:grid-cols-3">
               <p><b className="text-ink">Lo mínimo por persona:</b> equipo o proyecto, nombre y correo. Lo demás es opcional: tipo (alumno, colaborador, Exatec o externo), matrícula, etapa, descripción, si ya fue aceptado, espacio y vencimiento del acceso. Las demás preguntas de tu formulario se guardan en la solicitud.</p>
               <p><b className="text-ink">Cualquier acomodo sirve:</b> la exportación de tu formulario, una fila por persona, una por equipo con los demás integrantes en una celda, títulos arriba, varias hojas.</p>
-              <p><b className="text-ink">Entra como solicitud:</b> cada equipo nuevo queda en Solicitudes como «Por evaluar» para aceptarlo desde ahí; si el archivo trae estado, decisión o espacio, se anota como referencia. Lo que ya está registrado o viene repetido se ignora. No se envía ningún correo.</p>
+              <p><b className="text-ink">Entra como solicitud:</b> cada equipo nuevo queda en Solicitudes como «Por revisar» para aceptarlo desde ahí; si el archivo trae estado, decisión o espacio, se anota como referencia. Lo que ya está registrado o viene repetido se ignora. No se envía ningún correo.</p>
             </div>
           </Card>
         )}

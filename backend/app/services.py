@@ -276,7 +276,7 @@ def check_docs_complete(db: Session, team: Team) -> None:
     faltan = missing_docs(db, team)
     if team.estado == S_DOC and not faltan:
         set_state(db, team, S_EVA, motivo="Documentación completa")
-        upsert_task(db, "Evaluar", R_EVAL, f"Evaluar la solicitud de {team.nombre}", team,
+        upsert_task(db, "Evaluar", R_EVAL, f"Revisar la solicitud de {team.nombre}", team,
                     vence=add_business_days(team.fecha_solicitud, cfg(db, "DIAS_HABILES_DECISION", 10)))
 
 
@@ -359,7 +359,7 @@ def submit_application(db: Session, data: dict, files: dict[str, tuple[str, byte
         queue_message(db, "documentacion", team, extra={"documentos_faltantes": "; ".join(faltan)})
     else:
         set_state(db, team, S_EVA, motivo="Documentación completa")
-        upsert_task(db, "Evaluar", R_EVAL, f"Evaluar la solicitud de {team.nombre}", team,
+        upsert_task(db, "Evaluar", R_EVAL, f"Revisar la solicitud de {team.nombre}", team,
                     vence=add_business_days(today, cfg(db, "DIAS_HABILES_DECISION", 10)))
     return team
 
@@ -375,17 +375,19 @@ def ensure_access_rows(db: Session, team: Team) -> int:
 
 
 def evaluate(db: Session, team: Team, decision: str, rubrica: dict, retro: str, actor: str) -> None:
-    """Pasos 3 y 4: registra la rúbrica y la decisión; el mensaje sale solo."""
-    pesos = {r["criterio"]: r["peso"] for r in cfg(db, "RUBRICA", [])}
-    total = sum(pesos.values()) or 1
-    team.rubrica = rubrica
-    team.puntaje = round(sum(float(rubrica.get(c, 0)) / 5 * p for c, p in pesos.items()) / total * 100, 1)
+    """Pasos 3 y 4: aceptar o rechazar la solicitud; el mensaje sale solo. La rúbrica es opcional (sin ella no hay puntaje)."""
+    if rubrica:
+        pesos = {r["criterio"]: r["peso"] for r in cfg(db, "RUBRICA", [])}
+        total = sum(pesos.values()) or 1
+        team.rubrica = rubrica
+        team.puntaje = round(sum(float(rubrica.get(c, 0)) / 5 * p for c, p in pesos.items()) / total * 100, 1)
+    puntaje = f" · puntaje {team.puntaje}" if team.puntaje is not None else ""
     team.retroalimentacion, team.evaluador = retro, actor
     close_tasks(db, "Evaluar", team, actor=actor)
     if decision == "Aceptado":
         team.fecha_aceptacion = date.today()
         team.renovacion_confirmada = True
-        set_state(db, team, S_ACT, actor, f"Aceptado · puntaje {team.puntaje}")
+        set_state(db, team, S_ACT, actor, f"Aceptado{puntaje}")
         queue_message(db, "aceptacion", team)
         ensure_access_rows(db, team)
         n = sum(1 for m in team.members if m.activo)
@@ -393,8 +395,8 @@ def evaluate(db: Session, team: Team, decision: str, rubrica: dict, retro: str, 
                     vence=date.today() + timedelta(days=3), detalle="Captura el vencimiento de cada integrante en Accesos.")
     else:
         team.fecha_reaplicacion = date.today() + timedelta(days=cfg(db, "DIAS_REAPLICACION", 90))
-        set_state(db, team, S_NO, actor, f"No aceptado · puntaje {team.puntaje}")
-        queue_message(db, "no_aceptacion", team, extra={"retroalimentacion": retro or "—", "fecha_reaplicacion": fecha_larga(team.fecha_reaplicacion)})
+        set_state(db, team, S_NO, actor, f"No aceptado{puntaje}" + (f": {retro}" if retro else ""))
+        queue_message(db, "no_aceptacion", team, extra={"retroalimentacion": retro or "sin comentarios adicionales", "fecha_reaplicacion": fecha_larga(team.fecha_reaplicacion)})
 
 
 def update_access(db: Session, acc: Access, estado: str, vencimiento: date | None, actor: str) -> None:

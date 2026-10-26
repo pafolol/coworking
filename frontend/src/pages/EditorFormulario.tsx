@@ -95,7 +95,7 @@ export default function EditorFormulario({ clave, nombre, url, todos, onClose, r
               <div className="mt-4">
                 <p className="label">Preguntas extra</p>
                 <EditorCampos campos={f.preguntas ?? []} onChange={c => set('preguntas', c)}
-                  vacio="Sin preguntas extra. Lo que agregues (también archivos o firmas) aparece en «El proyecto» y se ve en la ficha del equipo y al evaluar." />
+                  vacio="Sin preguntas extra. Lo que agregues (también archivos o firmas) aparece en «El proyecto» y se ve en la ficha del equipo y al revisar la solicitud." />
               </div>
             </div>
             <div className="rounded-xl border border-line p-4">

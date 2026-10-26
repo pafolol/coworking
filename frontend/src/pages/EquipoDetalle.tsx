@@ -1,5 +1,5 @@
-import { ArrowLeft, PauseCircle, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, Check, ExternalLink, PauseCircle, Plus, Trash2, X } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { api, enDias, fecha, fechaHora, useApi } from '../api'
@@ -37,54 +37,106 @@ function MapaUso({ t }: { t: any }) {
   )
 }
 
-export function Evaluar({ t, onClose, reload }: { t: any; onClose: () => void; reload: () => unknown }) {
-  const [rubrica, setRubrica] = useState<Record<string, number>>({})
-  const faltan = t.rubrica_config.filter((r: any) => !rubrica[r.criterio]).length
-  const [retro, setRetro] = useState('')
-  const run = useAccion(reload)
+/** Revisión de una solicitud: todo lo del equipo y de cada integrante (con sus documentos), y aceptar o rechazar. */
+export function Revisar({ id, onClose, reload }: { id: number; onClose: () => void; reload: () => unknown }) {
+  const { data: t, reload: recargar } = useApi(`/equipos/${id}`)
+  const todo = async () => { await recargar(); await reload() }
+  const run = useAccion(todo)
   const [busy, setBusy] = useState(false)
-  const total = t.rubrica_config.reduce((s: number, r: any) => s + r.peso, 0) || 1
-  const puntaje = Math.round(t.rubrica_config.reduce((s: number, r: any) => s + ((rubrica[r.criterio] ?? 0) / 5) * r.peso, 0) / total * 100)
-  const decidir = async (decision: string) => {
+  const [rechazando, setRechazando] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  if (!t) return <Modal titulo="Revisar solicitud" onClose={onClose} ancho="max-w-5xl"><p className="py-10 text-center text-sm text-mute" role="status">Cargando…</p></Modal>
+  const decidida = !['Solicitud recibida', 'Documentación pendiente', 'En evaluación'].includes(t.estado)
+  const decidir = async (decision: 'Aceptado' | 'No aceptado') => {
     if (busy) return
     setBusy(true)
-    const ok = await run(() => api(`/equipos/${t.id}/evaluar`, { body: { decision, rubrica, retroalimentacion: retro } }),
-      decision === 'Aceptado' ? 'Aceptado: salió el mensaje de bienvenida y la tarea de accesos' : 'No aceptado: salió el mensaje con la retroalimentación')
+    const ok = await run(() => api(`/equipos/${t.id}/evaluar`, { body: { decision, retroalimentacion: motivo.trim() } }),
+      decision === 'Aceptado' ? `${t.nombre} aceptado: salió el mensaje de bienvenida y la tarea de accesos` : `${t.nombre} rechazado: salió el mensaje al equipo`)
     setBusy(false)
     if (ok) onClose()
   }
+  const docsDe = (memberId: number | null) => t.documentos.filter((d: any) => (d.member_id ?? null) === memberId)
+  const delEquipo = docsDe(null)
+  // Función, no componente: así el visor de un documento abierto no se desmonta cuando el modal se vuelve a pintar.
+  const docs = (lista: any[]) => lista.length === 0 ? <p className="text-xs text-mute">Sin documentos.</p> : (
+    <ul className="space-y-1.5">
+      {lista.map((d: any) => (
+        <li key={d.id} className="flex items-center gap-2 text-sm">
+          <span className="min-w-0 flex-1 truncate">{d.nombre}</span>
+          <Estatus valor={d.estado} />
+          <DocAcciones doc={d} reload={todo} />
+        </li>
+      ))}
+    </ul>
+  )
+  const Dato = ({ label, children }: { label: string; children: ReactNode }) => <div><dt className="eyebrow">{label}</dt><dd className="mt-0.5 text-sm">{children || <span className="text-mute">—</span>}</dd></div>
+
   return (
-    <Modal titulo={`Evaluar a ${t.nombre}`} onClose={onClose} ancho="max-w-xl">
-      <div className="mb-4 rounded-xl bg-slate-50 p-3 text-sm">
-        <p className="eyebrow">{t.folio} · {t.sector || 'sin sector'} · {t.etapa || 'sin etapa'} · {t.integrantes} integrante(s)</p>
-        <p className="mt-1 max-h-28 overflow-y-auto text-ink/80">{t.descripcion || 'Sin descripción.'}</p>
-        {(t.respuestas ?? []).map((r: any) => <p key={r.etiqueta} className="mt-1.5 text-[13px]"><b>{r.etiqueta}:</b> <span className="text-ink/80"><ValorRespuesta r={r} href={`/equipos/${t.id}/respuesta/${r.id}`} /></span></p>)}
-      </div>
-      {t.faltantes.length > 0 && <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Aún falta: {t.faltantes.join('; ')}.</p>}
-      <div className="space-y-3">
-        {t.rubrica_config.map((r: any) => (
-          <div key={r.criterio} className="flex items-center gap-3">
-            <div className="flex-1"><p className="text-sm font-semibold">{r.criterio}</p><p className="text-xs text-mute">peso {r.peso}%</p></div>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map(n => (
-                <button key={n} onClick={() => setRubrica({ ...rubrica, [r.criterio]: n })} aria-label={`${r.criterio}: ${n} de 5`} aria-pressed={rubrica[r.criterio] === n}
-                  className={`size-8 cursor-pointer rounded-lg font-mono text-sm font-semibold transition ${rubrica[r.criterio] >= n ? 'bg-brand text-white' : 'bg-slate-100 text-slate-400 hover:bg-brand-100'}`}>{n}</button>
-              ))}
+    <Modal titulo={`Revisar solicitud · ${t.nombre}`} onClose={onClose} ancho="max-w-5xl">
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Estado estado={t.estado} />
+          <Chip>{t.folio}</Chip>
+          <span className="text-sm text-mute">Recibida el {fecha(t.fecha_solicitud)}</span>
+          <Link to={`/equipos/${t.id}`} className="ml-auto inline-flex items-center gap-1 text-sm font-semibold text-brand hover:underline" onClick={onClose}>Ficha completa <ExternalLink size={13} /></Link>
+        </div>
+
+        <section className="rounded-xl border border-line p-4">
+          <h4 className="mb-3 font-display text-[15px] font-bold">El proyecto</h4>
+          <dl className="grid gap-4 sm:grid-cols-3">
+            <Dato label="Nombre">{t.nombre}</Dato>
+            <Dato label="Sector">{t.sector}</Dato>
+            <Dato label="Etapa">{t.etapa}</Dato>
+            <div className="sm:col-span-3"><Dato label="Descripción"><span className="whitespace-pre-line text-ink/85">{t.descripcion}</span></Dato></div>
+            {(t.respuestas ?? []).map((r: any) => (
+              <div key={r.id ?? r.etiqueta} className="sm:col-span-3"><Dato label={r.etiqueta}><span className="whitespace-pre-line text-ink/85"><ValorRespuesta r={r} href={`/equipos/${t.id}/respuesta/${r.id}`} /></span></Dato></div>
+            ))}
+            {t.notas && <div className="sm:col-span-3"><Dato label="Notas"><span className="whitespace-pre-line text-mute">{t.notas}</span></Dato></div>}
+          </dl>
+          {delEquipo.length > 0 && <div className="mt-4 border-t border-line pt-3"><p className="eyebrow mb-2">Documentos del equipo</p>{docs(delEquipo)}</div>}
+        </section>
+
+        <section>
+          <h4 className="mb-3 font-display text-[15px] font-bold">Integrantes ({t.miembros.filter((m: any) => m.activo).length})</h4>
+          <div className="grid gap-3 md:grid-cols-2">
+            {t.miembros.filter((m: any) => m.activo).map((m: any) => (
+              <div key={m.id} className="rounded-xl border border-line p-4">
+                <p className="flex flex-wrap items-center gap-2">
+                  <PersonaLink id={m.id} nombre={m.nombre} reload={todo} />
+                  {m.rol === 'Líder' && <Chip tono="lima">Líder</Chip>}
+                  <Chip tono={m.tipo === 'Externo' ? 'ambar' : 'gris'}>{m.tipo}</Chip>
+                </p>
+                <dl className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="col-span-2"><Dato label="Correo"><a href={`mailto:${m.correo}`} className="break-all hover:text-brand">{m.correo}</a></Dato></div>
+                  <Dato label="Matrícula o nómina"><span className="font-mono">{m.matricula}</span></Dato>
+                  <Dato label="Rol">{m.rol}</Dato>
+                </dl>
+                <div className="mt-3 border-t border-line pt-3">{docs(docsDe(m.id))}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {t.faltantes.length > 0 && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Aún falta: {t.faltantes.join('; ')}. Puedes aceptarla de todos modos.</p>}
+
+        {decidida ? <p className="border-t border-line pt-4 text-sm text-mute">Esta solicitud ya tiene decisión: {t.estado}.</p> : (
+          <div className="border-t border-line pt-4">
+            {rechazando && (
+              <Campo label="Motivo del rechazo (opcional)" ayuda="Si lo escribes, va en el mensaje al equipo.">
+                <textarea className="input min-h-20" autoFocus value={motivo} onChange={e => setMotivo(e.target.value)} />
+              </Campo>
+            )}
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              {rechazando ? <>
+                <button className="btn" disabled={busy} onClick={() => setRechazando(false)}>Volver</button>
+                <button className="btn btn-danger" disabled={busy} onClick={() => decidir('No aceptado')}><X size={15} /> Confirmar rechazo</button>
+              </> : <>
+                <button className="btn btn-danger" disabled={busy} onClick={() => setRechazando(true)}><X size={15} /> Rechazar</button>
+                <button className="btn btn-primary" disabled={busy} onClick={() => confirm(`¿Aceptar a ${t.nombre}? Sale el mensaje de bienvenida.`) && decidir('Aceptado')}><Check size={15} /> Aceptar</button>
+              </>}
             </div>
           </div>
-        ))}
-      </div>
-      <div className="my-5 flex items-center justify-between rounded-xl bg-ink px-4 py-3 text-white">
-        <span className="eyebrow !text-white/50">Puntaje</span>
-        <span className="font-display text-3xl font-extrabold">{faltan ? '—' : puntaje}<span className="text-base text-white/50">/100</span></span>
-      </div>
-      <Campo label="Retroalimentación del comité" ayuda="Obligatoria si no se acepta: va tal cual en el mensaje al equipo.">
-        <textarea className="input min-h-24" required value={retro} onChange={e => setRetro(e.target.value)} />
-      </Campo>
-      <div className="mt-5 flex justify-end gap-2">
-        {faltan > 0 && <span className="mr-auto self-center text-xs text-mute">Califica {faltan === t.rubrica_config.length ? 'los criterios' : `${faltan} criterio(s) más`} para poder decidir.</span>}
-        <button className="btn btn-danger" disabled={faltan > 0 || busy || !retro.trim()} title={!retro.trim() ? 'Escribe la retroalimentación para poder marcar No aceptado' : undefined} onClick={() => confirm(`¿Marcar a ${t.nombre} como NO aceptado? Sale el mensaje con la retroalimentación.`) && decidir('No aceptado')}>No aceptado</button>
-        <button className="btn btn-primary" disabled={faltan > 0 || busy} onClick={() => confirm(`¿Aceptar a ${t.nombre}? Sale el mensaje de bienvenida.`) && decidir('Aceptado')}>Aceptado</button>
+        )}
       </div>
     </Modal>
   )
@@ -118,7 +170,7 @@ function EquipoVista({ id }: { id?: string }) {
     <Page titulo={t.nombre} eyebrow={`${t.folio} · ${t.sector || 'sin sector'} · ${t.etapa || 'sin etapa'}`}
       acciones={
         <>
-          {preDecision && <button className="btn btn-primary" onClick={() => setModal('evaluar')}>Evaluar con rúbrica</button>}
+          {preDecision && <button className="btn btn-primary" onClick={() => setModal('evaluar')}>Aceptar o rechazar</button>}
           {t.fecha_aceptacion && t.estado !== 'Baja' && (t.en_pausa
             ? <button className="btn" disabled={busy} onClick={() => run(() => api(`/equipos/${t.id}/pausa`, { body: { quitar: true } }), 'Pausa terminada')}><PauseCircle size={14} /> Terminar pausa</button>
             : <button className="btn" onClick={() => abrir('pausa', { semanas: 1 })}><PauseCircle size={14} /> Pausa justificada</button>)}
@@ -211,10 +263,10 @@ function EquipoVista({ id }: { id?: string }) {
               <div className="grid grid-cols-2 gap-3">
                 <div><dt className="eyebrow">Solicitud</dt><dd>{fecha(t.fecha_solicitud)}</dd></div>
                 <div><dt className="eyebrow">Aceptación</dt><dd>{fecha(t.fecha_aceptacion)}</dd></div>
-                <div><dt className="eyebrow">Puntaje</dt><dd className="font-display text-xl font-bold">{t.puntaje ?? '—'}</dd></div>
+                {t.puntaje != null && <div><dt className="eyebrow">Puntaje</dt><dd className="font-display text-xl font-bold">{t.puntaje}</dd></div>}
                 <div><dt className="eyebrow">Pausa usada</dt><dd>{t.pausa_semanas_usadas} de {t.max_pausa} sem.</dd></div>
               </div>
-              {t.retroalimentacion && <div><dt className="eyebrow">Retroalimentación</dt><dd className="text-mute">{t.retroalimentacion}</dd></div>}
+              {t.retroalimentacion && <div><dt className="eyebrow">Motivo del rechazo</dt><dd className="text-mute">{t.retroalimentacion}</dd></div>}
               {t.fecha_reaplicacion && <div><dt className="eyebrow">Puede reaplicar</dt><dd>{fecha(t.fecha_reaplicacion)}</dd></div>}
             </dl>
           </Card>
@@ -247,7 +299,7 @@ function EquipoVista({ id }: { id?: string }) {
         </div>
       </div>
 
-      {modal === 'evaluar' && <Evaluar t={t} onClose={cerrar} reload={reload} />}
+      {modal === 'evaluar' && <Revisar id={t.id} onClose={cerrar} reload={reload} />}
       {acceso && <AccesoModal {...acceso} onClose={() => setAcceso(null)} reload={reload} />}
       {modal === 'estado' && (
         <Modal titulo="Cambiar estado a mano" onClose={cerrar} ancho="max-w-md">

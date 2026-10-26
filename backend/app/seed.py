@@ -119,7 +119,7 @@ def seed(db: Session) -> None:
             for d in docs:
                 d.estado, d.fecha_carga = ("Validado" if d.clave == "carta" else "Por validar"), sol
                 d.firma = t.lider_nombre if d.clave == "carta" else ""
-            sv.add_task(db, "Evaluar", sv.R_EVAL, f"Evaluar la solicitud de {t.nombre}", t, vence=sv.add_business_days(sol, 10))
+            sv.add_task(db, "Evaluar", sv.R_EVAL, f"Revisar la solicitud de {t.nombre}", t, vence=sv.add_business_days(sol, 10))
         elif estado == S_DOC:
             # Aceptaron la carta, pero falta la identificación de un integrante externo.
             if not any(m.tipo == "Externo" for m in t.members):

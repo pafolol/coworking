@@ -639,9 +639,7 @@ def equipo_evaluar(team_id: int, payload: dict = Body(...), db: Session = Depend
         raise HTTPException(400, "Este equipo ya tiene una decisión registrada.")
     decision = payload.get("decision")
     if decision not in ("Aceptado", "No aceptado"):
-        raise HTTPException(400, "Elige Aceptado o No aceptado.")
-    if decision == "No aceptado" and not (payload.get("retroalimentacion") or "").strip():
-        raise HTTPException(400, "Escribe la retroalimentación antes de marcar No aceptado.")
+        raise HTTPException(400, "Elige aceptar o rechazar.")
     sv.evaluate(db, t, decision, payload.get("rubrica") or {}, (payload.get("retroalimentacion") or "").strip(), op.email)
     db.commit()
     return {"ok": True, "estado": t.estado}

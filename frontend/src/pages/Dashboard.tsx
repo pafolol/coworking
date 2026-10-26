@@ -108,8 +108,8 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 gap-4">
           <Kpi acento label="En el espacio hoy" valor={d.hoy.equipos} sub={`${d.hoy.checkins} check-ins registrados`} to="/checkins" />
           <Kpi label="Equipos en operación" valor={k.en_operacion} sub={`${k.en_riesgo} en riesgo · ${k.alerta_baja} en alerta`} to="/equipos" />
-          <Kpi label="Tareas pendientes" valor={k.tareas} sub="evaluar, accesos, documentos" to="/tareas" />
-          <Kpi label="Por evaluar" valor={k.por_evaluar} sub="solicitudes en comité" to="/solicitudes" />
+          <Kpi label="Tareas pendientes" valor={k.tareas} sub="solicitudes, accesos, documentos" to="/tareas" />
+          <Kpi label="Por revisar" valor={k.por_evaluar} sub="solicitudes por aceptar o rechazar" to="/solicitudes" />
           <Kpi label="Lista de espera" valor={k.lista_espera} sub="equipos que ya califican" to="/espacios" />
           <Kpi label="Mensajes en bandeja" valor={k.bandeja} sub="por revisar o enviar" to="/mensajes" />
         </div>
