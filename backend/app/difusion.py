@@ -70,14 +70,18 @@ def describe(db: Session, filtro: dict | None) -> str:
     return f"{tipo} ({roles}) de equipos en: {', '.join(f['estados']) or 'cualquier estado'}"
 
 
+# Un solo correo para todo el grupo: lo que en la plantilla es de una persona o de un equipo se dice en general.
+VARIABLES_GRUPO = {"nombre": "a todos", "equipo": "tu equipo", "lider": "", "folio": "", "espacio": ""}
+
+
 def send_to_group(db: Session, clave: str, filtro: dict | None, actor: str) -> int:
-    """Un mensaje por persona (sin copia al líder), con sus variables."""
+    """Un solo mensaje con todas las personas del grupo en «Para». Devuelve cuántas personas son."""
     if db.get(Template, clave) is None:
         raise ValueError("Plantilla no encontrada.")
     personas = recipients(db, filtro)
-    for m in personas:
-        queue_message(db, clave, team=m.team, member=m, para=m.correo)
-    log(db, "Correo", f"Envío a grupo «{clave}»: {len(personas)} persona(s) — {describe(db, filtro)}", actor=actor)
+    if personas:
+        queue_message(db, clave, para=", ".join(m.correo.strip() for m in personas), extra=VARIABLES_GRUPO)
+    log(db, "Correo", f"Envío a grupo «{clave}»: 1 mensaje para {len(personas)} persona(s) — {describe(db, filtro)}", actor=actor)
     return len(personas)
 
 

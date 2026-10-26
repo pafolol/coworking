@@ -1036,7 +1036,7 @@ def mensajes_grupo(payload: dict = Body(...), db: Session = Depends(get_db), op:
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     if not n:
-        raise HTTPException(400, "Nadie cumple el filtro: no se creó ningún mensaje.")
+        raise HTTPException(400, "Nadie cumple el filtro: no se creó el mensaje.")
     db.commit()
     return {"creados": n}
 

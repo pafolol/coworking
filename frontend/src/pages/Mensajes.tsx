@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { api, API_URL, fecha, fechaHora, useApi } from '../api'
-import { abrirEnOutlook } from '../outlook'
+import { abrirEnOutlook, avisoOutlook } from '../outlook'
 import { Campo, Card, Chip, Estado, Estatus, Filtros, Page, useAccion, useToast, Vacio } from '../ui'
 
 function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
@@ -30,8 +30,8 @@ function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
     const prev = enviado ? abierto : null
     const next = porEnviar[0]
     if (next) {
-      const { recortado } = await abrirEnOutlook(next)
-      if (recortado) toast('El mensaje es largo: se recortó en Outlook y el texto completo quedó copiado.')
+      const aviso = avisoOutlook(await abrirEnOutlook(next))
+      if (aviso) toast(aviso)
       setAbierto(next.id)
       setId(next.id)
       setFiltro('Bandeja')
@@ -42,8 +42,8 @@ function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
     await api(`/mensajes/${sel.id}`, { method: 'PATCH', body: { ...(editable ? edit : {}), accion: a } })
   }, ok))
   const abrirUno = async () => {
-    const { recortado } = await abrirEnOutlook(edit)
-    if (recortado) toast('El mensaje es largo: se recortó en Outlook y el texto completo quedó copiado.')
+    const aviso = avisoOutlook(await abrirEnOutlook(edit))
+    if (aviso) toast(aviso)
     setAbierto(sel.id)
   }
 
@@ -291,8 +291,8 @@ function Grupos({ data, reload, alProgramar }: { data: any; reload: () => unknow
   if (!catalogo) return error ? <Vacio>{error}</Vacio> : null
   const total = dest?.total ?? 0
   const tplNombre = data.plantillas.find((t: any) => t.clave === plantilla)?.nombre
-  const enviar = () => confirm(`Se creará un mensaje «${tplNombre}» para cada una de las ${total} personas. Quedan en la bandeja de Mensajes para abrirlos en Outlook. ¿Continuar?`)
-    && ejecutar(async () => { await api('/mensajes/grupo', { body: { plantilla, filtro } }) }, `${total} mensajes creados`)
+  const enviar = () => confirm(`Se creará un solo mensaje «${tplNombre}» con las ${total} personas en «Para». Queda en la bandeja de Mensajes para abrirlo en Outlook. ¿Continuar?`)
+    && ejecutar(async () => { await api('/mensajes/grupo', { body: { plantilla, filtro } }) }, `Mensaje creado con ${total} destinatarios`)
   const programar = () => ejecutar(async () => {
     await api('/automatizaciones', { body: { ...prog, plantilla, filtro } })
     setProg({ ...prog, nombre: '' })
@@ -328,9 +328,9 @@ function Grupos({ data, reload, alProgramar }: { data: any; reload: () => unknow
                 {data.plantillas.map((t: any) => <option key={t.clave} value={t.clave}>{t.numero}. {t.nombre}{t.propia ? ' (propia)' : ''}</option>)}
               </select>
             </Campo>
-            <p className="text-xs text-mute">Cada persona recibe su propio correo con sus datos ({'{{nombre}}'}, {'{{equipo}}'}…), sin copia a nadie más.</p>
+            <p className="text-xs text-mute">Se crea un solo correo con todas las personas en «Para» (cada una verá las direcciones de las demás). Los datos de una persona ({'{{nombre}}'}, {'{{equipo}}'}…) se escriben en general: «a todos», «tu equipo».</p>
             <div className="flex justify-end">
-              <button className="btn btn-primary" disabled={ocupado || !plantilla || !total} onClick={enviar}><Send size={14} /> Crear {total} mensajes ahora</button>
+              <button className="btn btn-primary" disabled={ocupado || !plantilla || !total} onClick={enviar}><Send size={14} /> Crear el mensaje para {total} personas</button>
             </div>
             <div className="border-t border-line pt-3">
               <p className="mb-2 flex items-center gap-1.5 text-sm font-bold"><CalendarClock size={15} /> O programarlo (automático)</p>
@@ -376,7 +376,7 @@ function Programados({ reload: recargarMensajes }: { reload: () => unknown }) {
                 <p className="text-xs text-mute">Próximo: {a.activa && a.proxima ? fecha(a.proxima) : '—'}{a.ultima && ` · último: ${fechaHora(a.ultima)} (${a.ultimo_total})`}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button className="btn" onClick={() => confirm(`Se crearán ${a.total} mensajes ahora. ¿Continuar?`) && run(() => api(`/automatizaciones/${a.id}`, { method: 'PATCH', body: { accion: 'ejecutar' } }), 'Mensajes creados')}><Send size={14} /> Enviar ahora</button>
+                <button className="btn" onClick={() => confirm(`Se creará un mensaje con las ${a.total} personas en «Para». ¿Continuar?`) && run(() => api(`/automatizaciones/${a.id}`, { method: 'PATCH', body: { accion: 'ejecutar' } }), 'Mensaje creado')}><Send size={14} /> Enviar ahora</button>
                 {a.activa
                   ? <button className="btn" onClick={() => run(() => api(`/automatizaciones/${a.id}`, { method: 'PATCH', body: { activa: false } }), 'Envío pausado')}><Pause size={14} /> Pausar</button>
                   : <button className="btn" onClick={() => {
