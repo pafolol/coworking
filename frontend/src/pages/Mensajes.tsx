@@ -21,48 +21,17 @@ function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
     setOcupado(true)
     try { await fn() } finally { setOcupado(false) }
   }
-  // Cola de Outlook: se abre el borrador del siguiente mensaje por revisar; al pasar al otro se da por enviado el anterior.
   const toast = useToast()
-  const [abierto, setAbierto] = useState<number | null>(null)
-  const porEnviar = data.mensajes.filter((m: any) => ['Bandeja', 'Error', 'Borrador'].includes(m.estado) && m.id !== abierto).sort((a: any, b: any) => a.ts.localeCompare(b.ts))
-  const actualAbierto = data.mensajes.find((m: any) => m.id === abierto)
-  const siguiente = (enviado: boolean) => enCurso(async () => {
-    const prev = enviado ? abierto : null
-    const next = porEnviar[0]
-    if (next) {
-      const aviso = avisoOutlook(await abrirEnOutlook(next))
-      if (aviso) toast(aviso)
-      setAbierto(next.id)
-      setId(next.id)
-      setFiltro('Bandeja')
-    } else setAbierto(null)
-    await run(async () => { if (prev) await api(`/mensajes/${prev}`, { method: 'PATCH', body: { accion: 'marcar' } }) })
-  })
   const accion = (a: string, ok: string) => enCurso(() => run(async () => {
     await api(`/mensajes/${sel.id}`, { method: 'PATCH', body: { ...(editable ? edit : {}), accion: a } })
   }, ok))
   const abrirUno = async () => {
     const aviso = avisoOutlook(await abrirEnOutlook(edit))
     if (aviso) toast(aviso)
-    setAbierto(sel.id)
   }
 
   return (
     <>
-      {(porEnviar.length > 0 || actualAbierto) && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-sm">
-          <ExternalLink size={16} className="shrink-0 text-mute" />
-          <span className="min-w-0 flex-1">
-            {actualAbierto
-              ? <>Abierto en Outlook: <b>{actualAbierto.para}</b>. {porEnviar.length ? `Quedan ${porEnviar.length} por revisar.` : 'Es el último.'}</>
-              : <>{porEnviar.length} mensaje{porEnviar.length === 1 ? '' : 's'} por revisar. Se abren en tu Outlook uno por uno, listos para enviar.</>}
-          </span>
-          {actualAbierto && <button className="btn" disabled={ocupado} onClick={() => siguiente(false)}>Saltar (no lo envié)</button>}
-          <button className="btn btn-primary" disabled={ocupado} onClick={() => siguiente(!!actualAbierto)}>
-            {actualAbierto ? (porEnviar.length ? 'Ya lo envié · Siguiente' : 'Ya lo envié · Terminar') : 'Abrir el primero en Outlook'}
-          </button>
-        </div>
-      )}
       <div className="mb-4">
         <Filtros valor={filtro} onChange={f => { setFiltro(f); setId(null) }} opciones={[
           ...['Bandeja', 'Borrador', 'Enviado', 'Error', 'Descartado'].filter(e => e !== 'Borrador' || data.mensajes.some((m: any) => m.estado === e)).map(e => ({ id: e, label: e === 'Bandeja' ? 'Por revisar' : e, n: data.mensajes.filter((m: any) => m.estado === e).length })),

@@ -78,7 +78,7 @@ Sin configurar, el panel entra en "modo demo". Google solo sirve para entrar al 
 ## Correos
 
 Los mensajes (por evento, a grupos y programados) se guardan en **Mensajes → Bandeja de salida**. No salen solos:
-el botón **Abrir el primero en Outlook** abre cada uno como borrador (`mailto:`) en el Outlook predeterminado del equipo;
-se revisa, se envía desde Outlook y **Ya lo envié · Siguiente** lo marca y abre el siguiente. Si el texto es largo se
+el botón **Abrir en Outlook** abre el mensaje como borrador (`mailto:`) en el Outlook predeterminado del equipo;
+se revisa, se envía desde Outlook y se marca con **Marcar enviado**. Si el texto es largo se
 recorta en el borrador y queda copiado completo en el portapapeles. Cada correo sale a su destinatario real; para
 probar una plantilla usa **Enviarme una prueba** (Mensajes → Plantillas).
