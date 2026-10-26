@@ -71,7 +71,7 @@ def describe(db: Session, filtro: dict | None) -> str:
 
 
 def send_to_group(db: Session, clave: str, filtro: dict | None, actor: str) -> int:
-    """Un mensaje por persona (sin copia al líder), con sus variables. Se entrega según MODO_ENVIO."""
+    """Un mensaje por persona (sin copia al líder), con sus variables."""
     if db.get(Template, clave) is None:
         raise ValueError("Plantilla no encontrada.")
     personas = recipients(db, filtro)

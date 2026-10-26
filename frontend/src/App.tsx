@@ -29,7 +29,7 @@ import Solicitudes from './pages/Solicitudes'
 import Tareas from './pages/Tareas'
 import { Logo } from './ui'
 
-type Sesion = { usuario: { email: string; nombre: string; foto: string; demo: boolean; gmail: boolean } | null; google: boolean; demo: boolean; nombre: string }
+type Sesion = { usuario: { email: string; nombre: string; foto: string; demo: boolean } | null; google: boolean; demo: boolean; nombre: string }
 const SesionCtx = createContext<{ sesion: Sesion; kpis: any; reload: () => void }>(null!)
 export const useSesion = () => useContext(SesionCtx)
 

@@ -95,8 +95,6 @@ CONFIG = {
     "MEDICION": "equipo",
     "APROBACION_AUTOMATICA": False,
     "MODO_PRUEBA": True,
-    "MODO_ENVIO": "bandeja",  # bandeja | borrador | enviar
-    "CUENTA_ENVIO": "",
     "CORREOS_OPERACION": [],
     "LINK_REGLAMENTO": "",
     "SEMANAS_EXCLUIDAS": [],

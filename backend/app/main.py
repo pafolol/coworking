@@ -1,4 +1,4 @@
-"""API del coworking: formularios públicos, panel de operación, Google OAuth y tareas programadas."""
+"""API del coworking: formularios públicos, panel de operación, inicio de sesión con Google y tareas programadas."""
 import json
 import os
 import secrets
@@ -20,8 +20,7 @@ from sqlalchemy.orm import Session
 from . import cuentas, difusion, formas, importer
 from . import services as sv
 from .db import UPLOADS, Base, SessionLocal, engine, get_db
-from .mailer import (GOOGLE_AUTH, GOOGLE_TOKEN, GOOGLE_USERINFO, SCOPES, cfg, deliver, google_configured, links, log,
-                     queue_message, sender_account, set_cfg)
+from .mailer import GOOGLE_AUTH, GOOGLE_TOKEN, GOOGLE_USERINFO, SCOPES, cfg, google_configured, links, log, queue_message, set_cfg
 from .models import (CON_ESPACIO, EN_OPERACION, ESTADOS, S_ACT, S_ALERTA, S_BAJA, S_DOC, S_ESP, S_EVA, S_FIJO, S_SOL,
                      Access, AuthSession, Automation, ChangeRequest, Checkin, Config, CustomForm, Cut, CutItem, Document, FormResponse, GoogleAccount, Log,
                      Member, Message, Space, Task, Team, Template, User)
@@ -204,9 +203,7 @@ def start_session(request: Request, db: Session, response, email: str, nombre: s
 @app.get("/api/auth/me")
 def me(request: Request, db: Session = Depends(get_db)):
     session = current_session(request, db)
-    acc = db.get(GoogleAccount, session.email) if session else None
-    return {"usuario": {"email": session.email, "nombre": session.nombre, "foto": session.foto, "demo": session.demo,
-                        "gmail": bool(acc and acc.gmail)} if session else None,
+    return {"usuario": {"email": session.email, "nombre": session.nombre, "foto": session.foto, "demo": session.demo} if session else None,
             "google": google_configured(), "demo": demo_allowed(), "nombre": cfg(db, "NOMBRE", "Coworking GDL")}
 
 
@@ -251,7 +248,7 @@ def google_login():
         raise HTTPException(400, "Falta configurar GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en backend/.env")
     state = secrets.token_urlsafe(16)
     params = {"client_id": os.environ["GOOGLE_CLIENT_ID"], "redirect_uri": REDIRECT_URI, "response_type": "code", "scope": SCOPES,
-              "access_type": "offline", "prompt": "consent", "include_granted_scopes": "true", "state": state}
+              "prompt": "select_account", "state": state}
     response = RedirectResponse(f"{GOOGLE_AUTH}?{urlencode(params)}")
     response.set_cookie("cw_oauth", state, httponly=True, samesite="lax", max_age=600)
     return response
@@ -286,13 +283,9 @@ def google_callback(request: Request, code: str = "", state: str = "", error: st
 
     acc = db.get(GoogleAccount, email) or GoogleAccount(email=email)
     acc.nombre, acc.foto = info.get("name", email), info.get("picture", "")
-    acc.access_token = tok["access_token"]
-    acc.expira = datetime.now() + timedelta(seconds=int(tok.get("expires_in", 3600)))
-    acc.refresh_token = tok.get("refresh_token") or acc.refresh_token
-    acc.gmail = "gmail.compose" in tok.get("scope", "")
+    # Solo se usa para saber quién entró: ya no se guardan tokens de Google (los de Gmail que hubiera se borran al volver a entrar).
+    acc.access_token, acc.refresh_token, acc.expira, acc.gmail = "", "", None, False
     db.add(acc)
-    if acc.gmail and not cfg(db, "CUENTA_ENVIO", ""):
-        set_cfg(db, "CUENTA_ENVIO", email)
     log(db, "Sistema", f"Inicio de sesión con Google: {email}", actor=email)
     response = RedirectResponse(f"{FRONTEND}/")
     response.delete_cookie("cw_oauth")
@@ -922,11 +915,9 @@ def tarea_update(task_id: int, payload: dict = Body(...), db: Session = Depends(
 
 @app.get("/api/mensajes")
 def mensajes(db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
-    acc = sender_account(db)
     return {"mensajes": [msg_row(m) for m in db.scalars(select(Message).order_by(Message.ts.desc()).limit(300))],
             "plantillas": [{**row(t), "propia": t.clave.startswith(PROPIA)} for t in db.scalars(select(Template).order_by(Template.numero))],
-            "modo_envio": cfg(db, "MODO_ENVIO", "bandeja"), "modo_prueba": cfg(db, "MODO_PRUEBA", True),
-            "cuenta": acc.email if acc else None, "google": google_configured()}
+            "modo_prueba": cfg(db, "MODO_PRUEBA", True)}
 
 
 @app.patch("/api/mensajes/{msg_id}")
@@ -941,33 +932,15 @@ def mensaje_update(msg_id: int, payload: dict = Body(...), db: Session = Depends
                 setattr(m, campo, payload[campo])
     if accion == "descartar" and m.estado != "Enviado":
         m.estado = "Descartado"
-    elif accion in ("borrador", "enviar"):
-        if m.estado == "Enviado":
-            raise HTTPException(400, "Este mensaje ya se envió.")
-        if sender_account(db) is None:
-            raise HTTPException(400, "Conecta una cuenta de Google con permiso de Gmail (Configuración → Correo).")
-        if m.estado in ("Error", "Descartado"):
-            m.estado = "Bandeja"
-        deliver(db, m, accion)
-        if m.estado == "Enviado":
-            log(db, "Correo", f"Enviado por Gmail: «{m.asunto}»", m.team, op.email)
+    elif accion == "marcar":
+        # Se envió a mano desde el Outlook del equipo (borrador abierto con mailto:): solo queda registrarlo.
+        if m.estado == "Descartado":
+            raise HTTPException(400, "Este mensaje está descartado.")
+        if m.estado != "Enviado":
+            m.estado, m.error = "Enviado", ""
+            log(db, "Correo", f"Enviado desde Outlook: «{m.asunto}»", m.team, op.email)
     db.commit()
     return msg_row(m)
-
-
-@app.post("/api/mensajes/entregar")
-def mensajes_entregar(payload: dict = Body(...), db: Session = Depends(get_db), op: AuthSession = Depends(operator)):
-    """Entrega en lote todo lo que está en la bandeja, como borradores o como envíos."""
-    if sender_account(db) is None:
-        raise HTTPException(400, "Conecta una cuenta de Google con permiso de Gmail (Configuración → Correo).")
-    modo = "enviar" if payload.get("accion") == "enviar" else "borrador"
-    n = 0
-    for m in db.scalars(select(Message).where(Message.estado == "Bandeja").order_by(Message.ts)):
-        deliver(db, m, modo)
-        n += m.estado in ("Borrador", "Enviado")
-    log(db, "Correo", f"{n} mensaje(s) de la bandeja → {'enviados' if modo == 'enviar' else 'borradores de Gmail'}", actor=op.email)
-    db.commit()
-    return {"entregados": n}
 
 
 @app.put("/api/plantillas/{clave}")
@@ -1321,7 +1294,7 @@ async def public_forma_enviar(slug: str, request: Request, db: Session = Depends
 
 CONFIG_EDITABLE = ["NOMBRE", "SEMESTRE", "DIAS_MINIMOS", "SEMANAS_UPGRADE", "SEMANAS_DOWNGRADE", "SEMANAS_SIN_USO", "DIAS_RESPUESTA_BAJA",
                    "DIAS_GRACIA", "SEMANAS_PROMEDIO", "AVISO_1", "AVISO_2", "MAX_SEMANAS_PAUSA", "DIAS_HABILES_DECISION", "DIAS_REAPLICACION",
-                   "DIAS_RENOVACION", "MESES_ACCESO", "MEDICION", "APROBACION_AUTOMATICA", "MODO_PRUEBA", "MODO_ENVIO", "CUENTA_ENVIO",
+                   "DIAS_RENOVACION", "MESES_ACCESO", "MEDICION", "APROBACION_AUTOMATICA", "MODO_PRUEBA",
                    "CORREOS_OPERACION", "LINK_REGLAMENTO", "SEMANAS_EXCLUIDAS", "CATALOGO_DOCS", "RUBRICA", "PUBLIC_URL", "CARTA_COMPROMISO", "NIVELES", "FORMULARIOS", "DOMINIOS_INTERNOS", "RENOVACION_AUTOMATICA", "RENOVACION_FECHAS"]
 
 
@@ -1338,9 +1311,7 @@ def config_get(db: Session = Depends(get_db), _: AuthSession = Depends(operator)
     proxima = sv.next_renewal(db)
     return {"config": {c.clave: c.valor for c in db.scalars(select(Config)) if c.clave not in ("QR_TOKEN", "FOLIO_SALT")}, "links": links(db),
             "proxima_renovacion": proxima.isoformat() if proxima else None,
-            "formularios": sv.formularios(db),
-            "google": {"configurado": google_configured(), "redirect_uri": REDIRECT_URI,
-                       "cuentas": [{"email": a.email, "nombre": a.nombre, "gmail": a.gmail and bool(a.refresh_token)} for a in db.scalars(select(GoogleAccount))]}}
+            "formularios": sv.formularios(db)}
 
 
 @app.put("/api/config")
@@ -1358,8 +1329,6 @@ def config_put(payload: dict = Body(...), db: Session = Depends(get_db), op: Aut
             raise HTTPException(400, "CORREOS_OPERACION debe ser una lista de correos.")
         if clave in ("APROBACION_AUTOMATICA", "MODO_PRUEBA") and not isinstance(valor, bool):
             raise HTTPException(400, f"{clave} debe ser verdadero o falso.")
-        if clave == "MODO_ENVIO" and valor not in ("bandeja", "borrador", "enviar"):
-            raise HTTPException(400, "MODO_ENVIO desconocido.")
         if clave == "FORMULARIOS":
             if not isinstance(valor, dict):
                 raise HTTPException(400, "FORMULARIOS inválido.")

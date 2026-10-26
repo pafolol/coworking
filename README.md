@@ -3,7 +3,7 @@
 Sistema web que reemplaza la hoja de cálculo + formularios + script del manual de operación:
 33 espacios fijos que se ganan y se conservan con uso real, medido con un QR de check-in.
 
-- `backend/` — FastAPI + SQLite (`coworking.db`). Reglas, corte semanal, vencimientos, mensajes y Gmail.
+- `backend/` — FastAPI + SQLite (`coworking.db`). Reglas, corte semanal, vencimientos y mensajes.
 - `frontend/` — React + Vite + Tailwind. Panel de operación y los tres formularios públicos.
 
 ## Arrancar
@@ -33,7 +33,7 @@ cd frontend; npm install
 | Inicio | Ocupación de los 33 lugares, equipos por estado, uso por semana, check-ins por día, vencimientos a 30 días, lista de espera |
 | Tareas | Lo único manual: evaluar, dar/renovar/revocar accesos, validar documentos, aprobar el corte |
 | Corte semanal | Propuesta de cada lunes: se aprueba (o se desmarca lo que no aplique) y salen los mensajes |
-| Mensajes | Bandeja de salida (revisar, crear borrador en Gmail, enviar); las 14 plantillas del sistema más las que crees; envíos a grupos (internos/externos, líderes/integrantes, por estado, por equipo o por persona) con exportación a Excel (nombre y correo); y envíos programados (una vez, diario, semanal o mensual) |
+| Mensajes | Bandeja de salida (revisar y abrir cada correo en Outlook, uno por uno); las 14 plantillas del sistema más las que crees; envíos a grupos (internos/externos, líderes/integrantes, por estado, por equipo o por persona) con exportación a Excel (nombre y correo); y envíos programados (una vez, diario, semanal o mensual) |
 | Solicitudes / Equipos / Espacios / Check-ins | Evaluación con rúbrica, ficha de cada equipo, plano de lugares, QR |
 | Formularios | Los tres enlaces públicos (solicitud, check-in, cambios) con su QR, totalmente editables (textos, color, botón, secciones y preguntas extra de cualquier tipo, incluso archivos y firmas), y los **formularios propios**: se arman en el editor (texto, número, fecha, opciones, casillas, archivos, firma, secciones), se mandan por correo con un enlace personal a personas o equipos (o a correos sueltos) y sus respuestas se ven en el panel o se exportan a Excel |
 | Accesos / Documentos | Espejo de la plataforma de accesos del campus; documentos que se suben, se revisan en pantalla y se consultan por persona |
@@ -63,19 +63,22 @@ Al arrancar se crean las cuentas `admin` y `admin2` con la contraseña de `LOGIN
 (solo si aún no existen; en la base se guarda únicamente el hash). Para cambiarla: cambia `LOGIN_PASSWORD`,
 borra las filas de la tabla `users` y reinicia el backend.
 
-## Google: inicio de sesión y Gmail
+## Google: inicio de sesión
 
-Sin configurar, el panel entra en "modo demo" y los mensajes se quedan en la bandeja.
+Sin configurar, el panel entra en "modo demo". Google solo sirve para entrar al panel (no se pide acceso a Gmail).
 
-1. En <https://console.cloud.google.com> crea un proyecto y activa **Gmail API**.
-2. Pantalla de consentimiento OAuth: tipo **Interno** (Google Workspace) y agrega el permiso
-   `https://www.googleapis.com/auth/gmail.compose`.
+1. En <https://console.cloud.google.com> crea un proyecto.
+2. Pantalla de consentimiento OAuth: tipo **Interno** (Google Workspace). Los permisos básicos bastan (`openid`, `email`, `profile`).
 3. Credenciales → Crear ID de cliente OAuth → **Aplicación web**. URI de redirección autorizada:
    `http://localhost:5180/api/auth/google/callback` (o la de tu dominio).
 4. Copia `backend/.env.example` a `backend/.env`, pega `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`, reinicia el backend.
-5. Entra con Google. La primera cuenta queda como administradora y como cuenta de envío;
+5. Entra con Google. La primera cuenta queda como administradora;
    las demás deben estar en Configuración → Correos del equipo operativo.
 
-En Configuración → Correo y Google se elige qué pasa con cada mensaje: se queda en la bandeja,
-se crea solo como borrador en Gmail, o se envía automáticamente. **Modo prueba** (activo de inicio)
-manda todo solo al equipo operativo con el destinatario real en el asunto.
+## Correos
+
+Los mensajes (por evento, a grupos y programados) se guardan en **Mensajes → Bandeja de salida**. No salen solos:
+el botón **Abrir el primero en Outlook** abre cada uno como borrador (`mailto:`) en el Outlook predeterminado del equipo;
+se revisa, se envía desde Outlook y **Ya lo envié · Siguiente** lo marca y abre el siguiente. Si el texto es largo se
+recorta en el borrador y queda copiado completo en el portapapeles. **Modo prueba** (activo de inicio) arma todo solo
+para el equipo operativo con el destinatario real en el asunto.

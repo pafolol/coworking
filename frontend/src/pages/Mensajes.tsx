@@ -1,9 +1,10 @@
-import { CalendarClock, Download, FilePenLine, Pause, Play, Plus, Send, Trash2 } from 'lucide-react'
+import { CalendarClock, Check, Download, ExternalLink, Pause, Play, Plus, Send, Trash2 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { api, API_URL, fecha, fechaHora, useApi } from '../api'
-import { Campo, Card, Chip, Estado, Estatus, Filtros, Page, useAccion, Vacio } from '../ui'
+import { abrirEnOutlook } from '../outlook'
+import { Campo, Card, Chip, Estado, Estatus, Filtros, Page, useAccion, useToast, Vacio } from '../ui'
 
 function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
   const run = useAccion(reload)
@@ -14,55 +15,63 @@ function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
   const sel = data.mensajes.find((m: any) => m.id === id) ?? lista[0]
   useEffect(() => { setEdit(sel ? { para: sel.para, cc: sel.cc, asunto: sel.asunto, cuerpo: sel.cuerpo } : null) }, [sel?.id])
   const editable = sel && ['Bandeja', 'Error'].includes(sel.estado)
-  const enBandeja = data.mensajes.filter((m: any) => m.estado === 'Bandeja').length
   const [ocupado, setOcupado] = useState(false)
   const enCurso = async (fn: () => Promise<unknown>) => {
     if (ocupado) return
     setOcupado(true)
     try { await fn() } finally { setOcupado(false) }
   }
+  // Cola de Outlook: se abre el borrador del siguiente mensaje por revisar; al pasar al otro se da por enviado el anterior.
+  const toast = useToast()
+  const [abierto, setAbierto] = useState<number | null>(null)
+  const porEnviar = data.mensajes.filter((m: any) => ['Bandeja', 'Error', 'Borrador'].includes(m.estado) && m.id !== abierto).sort((a: any, b: any) => a.ts.localeCompare(b.ts))
+  const actualAbierto = data.mensajes.find((m: any) => m.id === abierto)
+  const siguiente = (enviado: boolean) => enCurso(async () => {
+    const prev = enviado ? abierto : null
+    const next = porEnviar[0]
+    if (next) {
+      const { recortado } = await abrirEnOutlook(next)
+      if (recortado) toast('El mensaje es largo: se recortó en Outlook y el texto completo quedó copiado.')
+      setAbierto(next.id)
+      setId(next.id)
+      setFiltro('Bandeja')
+    } else setAbierto(null)
+    await run(async () => { if (prev) await api(`/mensajes/${prev}`, { method: 'PATCH', body: { accion: 'marcar' } }) })
+  })
   const accion = (a: string, ok: string) => enCurso(() => run(async () => {
-    const r = await api(`/mensajes/${sel.id}`, { method: 'PATCH', body: { ...(editable ? edit : {}), accion: a } })
-    // El servidor responde 200 aunque Gmail falle: el mensaje queda en «Error» y no hay que anunciar un éxito.
-    if (r.estado === 'Error') { await reload(); throw new Error(r.error || 'Gmail no aceptó el mensaje. Revisa el error en el mensaje.') }
+    await api(`/mensajes/${sel.id}`, { method: 'PATCH', body: { ...(editable ? edit : {}), accion: a } })
   }, ok))
-  const enviarUno = () => {
-    const destino = data.modo_prueba ? 'Modo prueba: saldrá solo al equipo operativo.' : `Saldrá a ${edit.para}.`
-    if (confirm(`Se enviará por Gmail «${sel.asunto}». ${destino} ¿Continuar?`)) void accion('enviar', 'Mensaje enviado')
+  const abrirUno = async () => {
+    const { recortado } = await abrirEnOutlook(edit)
+    if (recortado) toast('El mensaje es largo: se recortó en Outlook y el texto completo quedó copiado.')
+    setAbierto(sel.id)
   }
-  const lote = (a: string) => confirm(a === 'enviar' ? `Se enviarán por Gmail los ${enBandeja} mensajes de la bandeja${data.modo_prueba ? ' (modo prueba: solo al equipo operativo)' : ''}. ¿Continuar?` : `Se crearán ${enBandeja} borradores en Gmail con los mensajes de la bandeja. ¿Continuar?`)
-    && enCurso(() => run(async () => {
-      const r = await api('/mensajes/entregar', { body: { accion: a } })
-      if (!r.entregados) { await reload(); throw new Error('No se entregó ningún mensaje; revisa los errores.') }
-      if (r.entregados < enBandeja) { await reload(); throw new Error(`Solo se entregaron ${r.entregados} de ${enBandeja}; revisa los que quedaron en Error.`) }
-    }, a === 'enviar' ? 'Mensajes enviados' : 'Borradores creados en Gmail'))
 
   return (
     <>
-      <div className={`mb-4 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${data.cuenta ? 'border-line bg-white' : 'border-amber-200 bg-amber-50'}`}>
-        {data.cuenta ? (
-          <>
-            <span className="size-2 rounded-full bg-emerald-500" />
-            <span>Gmail conectado: <b>{data.cuenta}</b></span>
-            <Chip tono="azul">{{ bandeja: 'Revisión manual', borrador: 'Borradores automáticos', enviar: 'Envío automático' }[data.modo_envio as string]}</Chip>
-            {data.modo_prueba && <Chip tono="lima">Modo prueba</Chip>}
-            <span className="flex-1" />
-            {enBandeja > 0 && <>
-              <button className="btn" disabled={ocupado} onClick={() => lote('borrador')}><FilePenLine size={14} /> Crear {enBandeja} borradores en Gmail</button>
-              <button className="btn btn-primary" disabled={ocupado} onClick={() => lote('enviar')}><Send size={14} /> Enviar los {enBandeja}</button>
-            </>}
-          </>
-        ) : (
-          <>
-            <span className="size-2 rounded-full bg-amber-500" />
-            <span className="flex-1">Envío de correo desactivado por ahora: los mensajes se quedan aquí, listos para revisar.</span>
-            {data.modo_prueba && <Chip tono="lima">Modo prueba</Chip>}
-          </>
-        )}
-      </div>
+      {data.modo_prueba && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-sm">
+          <Chip tono="lima">Modo prueba</Chip>
+          <span className="flex-1">Los correos se arman solo para el equipo operativo, con el destinatario real en el asunto.</span>
+        </div>
+      )}
+      {(porEnviar.length > 0 || actualAbierto) && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-sm">
+          <ExternalLink size={16} className="shrink-0 text-mute" />
+          <span className="min-w-0 flex-1">
+            {actualAbierto
+              ? <>Abierto en Outlook: <b>{actualAbierto.para}</b>. {porEnviar.length ? `Quedan ${porEnviar.length} por revisar.` : 'Es el último.'}</>
+              : <>{porEnviar.length} mensaje{porEnviar.length === 1 ? '' : 's'} por revisar. Se abren en tu Outlook uno por uno, listos para enviar.</>}
+          </span>
+          {actualAbierto && <button className="btn" disabled={ocupado} onClick={() => siguiente(false)}>Saltar (no lo envié)</button>}
+          <button className="btn btn-primary" disabled={ocupado} onClick={() => siguiente(!!actualAbierto)}>
+            {actualAbierto ? (porEnviar.length ? 'Ya lo envié · Siguiente' : 'Ya lo envié · Terminar') : 'Abrir el primero en Outlook'}
+          </button>
+        </div>
+      )}
       <div className="mb-4">
         <Filtros valor={filtro} onChange={f => { setFiltro(f); setId(null) }} opciones={[
-          ...['Bandeja', 'Borrador', 'Enviado', 'Error', 'Descartado'].map(e => ({ id: e, label: e === 'Bandeja' ? 'Por revisar' : e, n: data.mensajes.filter((m: any) => m.estado === e).length })),
+          ...['Bandeja', 'Borrador', 'Enviado', 'Error', 'Descartado'].filter(e => e !== 'Borrador' || data.mensajes.some((m: any) => m.estado === e)).map(e => ({ id: e, label: e === 'Bandeja' ? 'Por revisar' : e, n: data.mensajes.filter((m: any) => m.estado === e).length })),
           { id: 'todos', label: 'Todos', n: data.mensajes.length },
         ]} />
       </div>
@@ -97,8 +106,10 @@ function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
                 <div className="flex flex-wrap justify-end gap-2 pt-1">
                   {sel.estado !== 'Descartado' && <button className="btn btn-ghost text-mute" disabled={ocupado} onClick={() => confirm('¿Descartar este mensaje? No se enviará.') && accion('descartar', 'Mensaje descartado')}><Trash2 size={14} /> Descartar</button>}
                   {editable && <button className="btn" disabled={ocupado} onClick={() => accion('guardar', 'Cambios guardados')}>Guardar cambios</button>}
-                  {sel.estado !== 'Borrador' && <button className="btn" disabled={!data.cuenta || ocupado} onClick={() => accion('borrador', 'Borrador creado en Gmail')}><FilePenLine size={14} /> Crear borrador en Gmail</button>}
-                  <button className="btn btn-primary" disabled={!data.cuenta || ocupado} onClick={enviarUno}><Send size={14} /> {sel.estado === 'Borrador' ? 'Enviar el borrador' : 'Enviar ahora'}</button>
+                  {sel.estado !== 'Descartado' && <>
+                    <button className="btn" disabled={ocupado} onClick={abrirUno}><ExternalLink size={14} /> Abrir en Outlook</button>
+                    <button className="btn btn-primary" disabled={ocupado} onClick={() => accion('marcar', 'Marcado como enviado')}><Check size={14} /> Marcar enviado</button>
+                  </>}
                 </div>
               )}
             </div>
@@ -286,7 +297,7 @@ function Grupos({ data, reload, alProgramar }: { data: any; reload: () => unknow
   if (!catalogo) return error ? <Vacio>{error}</Vacio> : null
   const total = dest?.total ?? 0
   const tplNombre = data.plantillas.find((t: any) => t.clave === plantilla)?.nombre
-  const enviar = () => confirm(`Se creará un mensaje «${tplNombre}» para cada una de las ${total} personas${data.modo_prueba ? ' (modo prueba: saldrán solo al equipo operativo)' : ''}. Se entregan según el modo de envío de Configuración. ¿Continuar?`)
+  const enviar = () => confirm(`Se creará un mensaje «${tplNombre}» para cada una de las ${total} personas${data.modo_prueba ? ' (modo prueba: saldrán solo al equipo operativo)' : ''}. Quedan en la bandeja de Mensajes para abrirlos en Outlook. ¿Continuar?`)
     && ejecutar(async () => { await api('/mensajes/grupo', { body: { plantilla, filtro } }) }, `${total} mensajes creados`)
   const programar = () => ejecutar(async () => {
     await api('/automatizaciones', { body: { ...prog, plantilla, filtro } })
