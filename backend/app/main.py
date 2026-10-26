@@ -61,7 +61,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Coworking GDL", lifespan=lifespan)
 
-# El frontend puede vivir en otro dominio que el API (api.canilarpit.com): CORS con credenciales solo para esos orígenes.
+# El frontend puede vivir en otro dominio que el API (api.emprendimientohub.com): CORS con credenciales solo para esos orígenes.
 ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", FRONTEND).split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
