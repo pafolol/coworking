@@ -1,5 +1,5 @@
 import {
-  Award, BookOpen, CalendarCheck, ClipboardList, FileUp, ClipboardCheck, FileCheck2, History, Inbox, KeyRound, LayoutDashboard, LayoutGrid, ListTodo, LogOut,
+  Award, BookOpen, CalendarCheck, ClipboardList, FileUp, FileCheck2, History, Inbox, KeyRound, LayoutDashboard, LayoutGrid, ListTodo, LogOut,
   Mail, QrCode, Settings, UsersRound,
 } from 'lucide-react'
 import { createContext, type ReactNode, useContext, useEffect, useRef } from 'react'
@@ -106,11 +106,6 @@ function Shell() {
         </div>
       </aside>
       <main className="min-w-0 flex-1">
-        {kpis?.modo_prueba && (
-          <div className="no-print flex items-center justify-center gap-2 bg-spark px-4 py-1.5 text-[12.5px] font-semibold text-ink">
-            <ClipboardCheck size={14} /> Modo prueba activo: ningún correo llega a los equipos. Se cambia en Configuración → Correo.
-          </div>
-        )}
         <Outlet />
       </main>
     </div>

@@ -49,12 +49,6 @@ function Bandeja({ data, reload }: { data: any; reload: () => unknown }) {
 
   return (
     <>
-      {data.modo_prueba && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-sm">
-          <Chip tono="lima">Modo prueba</Chip>
-          <span className="flex-1">Los correos se arman solo para el equipo operativo, con el destinatario real en el asunto.</span>
-        </div>
-      )}
       {(porEnviar.length > 0 || actualAbierto) && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-sm">
           <ExternalLink size={16} className="shrink-0 text-mute" />
@@ -297,7 +291,7 @@ function Grupos({ data, reload, alProgramar }: { data: any; reload: () => unknow
   if (!catalogo) return error ? <Vacio>{error}</Vacio> : null
   const total = dest?.total ?? 0
   const tplNombre = data.plantillas.find((t: any) => t.clave === plantilla)?.nombre
-  const enviar = () => confirm(`Se creará un mensaje «${tplNombre}» para cada una de las ${total} personas${data.modo_prueba ? ' (modo prueba: saldrán solo al equipo operativo)' : ''}. Quedan en la bandeja de Mensajes para abrirlos en Outlook. ¿Continuar?`)
+  const enviar = () => confirm(`Se creará un mensaje «${tplNombre}» para cada una de las ${total} personas. Quedan en la bandeja de Mensajes para abrirlos en Outlook. ¿Continuar?`)
     && ejecutar(async () => { await api('/mensajes/grupo', { body: { plantilla, filtro } }) }, `${total} mensajes creados`)
   const programar = () => ejecutar(async () => {
     await api('/automatizaciones', { body: { ...prog, plantilla, filtro } })

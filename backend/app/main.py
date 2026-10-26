@@ -468,8 +468,7 @@ def nav(db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
     return {"tareas": count(select(func.count()).select_from(Task).where(Task.estado == "Pendiente")),
             "bandeja": count(select(func.count()).select_from(Message).where(Message.estado.in_(["Bandeja", "Error"]))),
             "por_evaluar": count(select(func.count()).select_from(Team).where(Team.estado == S_EVA)),
-            "corte": sum(1 for i in cut.items if i.accion != "Sin cambio") if cut else 0,
-            "modo_prueba": cfg(db, "MODO_PRUEBA", True)}
+            "corte": sum(1 for i in cut.items if i.accion != "Sin cambio") if cut else 0}
 
 
 @app.get("/api/importar/plantilla")
@@ -916,8 +915,7 @@ def tarea_update(task_id: int, payload: dict = Body(...), db: Session = Depends(
 @app.get("/api/mensajes")
 def mensajes(db: Session = Depends(get_db), _: AuthSession = Depends(operator)):
     return {"mensajes": [msg_row(m) for m in db.scalars(select(Message).order_by(Message.ts.desc()).limit(300))],
-            "plantillas": [{**row(t), "propia": t.clave.startswith(PROPIA)} for t in db.scalars(select(Template).order_by(Template.numero))],
-            "modo_prueba": cfg(db, "MODO_PRUEBA", True)}
+            "plantillas": [{**row(t), "propia": t.clave.startswith(PROPIA)} for t in db.scalars(select(Template).order_by(Template.numero))]}
 
 
 @app.patch("/api/mensajes/{msg_id}")
@@ -1218,7 +1216,7 @@ def formas_enviar(form_id: int, payload: dict = Body(...), db: Session = Depends
         raise HTTPException(400, str(exc))
     f.asunto, f.mensaje = str(payload.get("asunto") or "")[:300], str(payload.get("mensaje") or "")[:10000]  # se recuerdan para el siguiente envío
     db.commit()
-    return {"enviados": n, "modo_prueba": cfg(db, "MODO_PRUEBA", True)}
+    return {"enviados": n}
 
 
 @app.get("/api/formas/{form_id}/exportar")
@@ -1294,7 +1292,7 @@ async def public_forma_enviar(slug: str, request: Request, db: Session = Depends
 
 CONFIG_EDITABLE = ["NOMBRE", "SEMESTRE", "DIAS_MINIMOS", "SEMANAS_UPGRADE", "SEMANAS_DOWNGRADE", "SEMANAS_SIN_USO", "DIAS_RESPUESTA_BAJA",
                    "DIAS_GRACIA", "SEMANAS_PROMEDIO", "AVISO_1", "AVISO_2", "MAX_SEMANAS_PAUSA", "DIAS_HABILES_DECISION", "DIAS_REAPLICACION",
-                   "DIAS_RENOVACION", "MESES_ACCESO", "MEDICION", "APROBACION_AUTOMATICA", "MODO_PRUEBA",
+                   "DIAS_RENOVACION", "MESES_ACCESO", "MEDICION", "APROBACION_AUTOMATICA",
                    "CORREOS_OPERACION", "LINK_REGLAMENTO", "SEMANAS_EXCLUIDAS", "CATALOGO_DOCS", "RUBRICA", "PUBLIC_URL", "CARTA_COMPROMISO", "NIVELES", "FORMULARIOS", "DOMINIOS_INTERNOS", "RENOVACION_AUTOMATICA", "RENOVACION_FECHAS"]
 
 
@@ -1327,7 +1325,7 @@ def config_put(payload: dict = Body(...), db: Session = Depends(get_db), op: Aut
             raise HTTPException(400, f"{clave} debe ser una lista.")
         if clave == "CORREOS_OPERACION" and not all(isinstance(c, str) for c in valor):
             raise HTTPException(400, "CORREOS_OPERACION debe ser una lista de correos.")
-        if clave in ("APROBACION_AUTOMATICA", "MODO_PRUEBA") and not isinstance(valor, bool):
+        if clave == "APROBACION_AUTOMATICA" and not isinstance(valor, bool):
             raise HTTPException(400, f"{clave} debe ser verdadero o falso.")
         if clave == "FORMULARIOS":
             if not isinstance(valor, dict):

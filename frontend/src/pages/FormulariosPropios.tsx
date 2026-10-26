@@ -204,7 +204,7 @@ function EnviarPropio({ f, onClose, reload }: { f: any; onClose: () => void; rel
     setMandando(true)
     try {
       const r = await api(`/formas/${f.id}/enviar`, { body: { filtro: usarFiltro ? filtro : null, correos: sueltos, asunto, mensaje } })
-      toast(`Listo: ${r.enviados} correo(s) en la bandeja de salida${r.modo_prueba ? ' (modo prueba: no llegan a las personas)' : ''}.`)
+      toast(`Listo: ${r.enviados} correo(s) en la bandeja de salida$.`)
       void reload()
       onClose()
     } catch (e) {

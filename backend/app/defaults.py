@@ -94,7 +94,6 @@ CONFIG = {
     "MESES_ACCESO": 6,
     "MEDICION": "equipo",
     "APROBACION_AUTOMATICA": False,
-    "MODO_PRUEBA": True,
     "CORREOS_OPERACION": [],
     "LINK_REGLAMENTO": "",
     "SEMANAS_EXCLUIDAS": [],

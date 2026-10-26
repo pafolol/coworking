@@ -141,12 +141,10 @@ export default function Config() {
 
         <Card titulo="Correo">
           <div className="space-y-3">
-            <Interruptor on={c.MODO_PRUEBA} onChange={v => set('MODO_PRUEBA', v)} label="Modo prueba"
-              nota="Todos los correos van solo al equipo operativo, con el destinatario real en el asunto. Apágalo al arrancar en serio." />
             <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
               Los correos no salen solos: se quedan en la bandeja de Mensajes y ahí se abren, uno por uno, en el Outlook del equipo para revisarlos y enviarlos.
             </p>
-            <Campo label="Correos del equipo operativo" ayuda="Uno por línea. Son quienes reciben los correos en modo prueba.">
+            <Campo label="Correos del equipo operativo" ayuda="Uno por línea. Son las cuentas de Google que pueden entrar al panel.">
               <textarea className="input min-h-20 font-mono text-[13px]" value={c.CORREOS_OPERACION.join('\n')} onChange={e => set('CORREOS_OPERACION', e.target.value.split('\n').map(x => x.trim().toLowerCase()).filter(Boolean))} />
             </Campo>
           </div>

@@ -102,11 +102,8 @@ def queue_message(db: Session, clave: str, team: Team | None = None, member: Mem
             para = team.lider_correo
             cc = [m.correo for m in team.members if m.activo and m.correo != team.lider_correo]
 
-    if prueba or cfg(db, "MODO_PRUEBA", True):
-        destino = cfg(db, "CORREOS_OPERACION", []) or []
-        asunto = f"[PRUEBA → {para or '(sin destinatario)'}] {asunto}"
-        # En modo prueba nunca se usa el destinatario real, ni siquiera si falta a quién mandar la prueba.
-        para, cc, prueba = (", ".join(destino) or "(falta capturar los correos del equipo operativo)"), [], True
+    if prueba:  # «Enviarme una prueba»: va solo a quien la pidió, marcada en el asunto
+        asunto, cc = f"[PRUEBA] {asunto}", []
 
     msg = Message(ts=datetime.now(), plantilla=clave, team_id=team.id if team else None, para=para or "",
                   cc=", ".join(cc), asunto=asunto, cuerpo=cuerpo, prueba=prueba)
